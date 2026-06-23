@@ -2,7 +2,12 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import Navbar from "@/app/components/Navbar";
+import {
+  getUserProfile, updateUserProfile, getMyOrders,
+  orderFromAPI,   getCachedUserInfo,  clearUserToken,
+} from "@/lib/api";
 
 /* ─── Types ─── */
 type OrderStatus = "placed" | "confirmed" | "shipped" | "out_for_delivery" | "delivered" | "cancelled";
@@ -42,6 +47,16 @@ const STATUS_BADGE: Record<OrderStatus, { bg: string; color: string; label: stri
 
 type TabId = "orders" | "profile" | "wishlist" | "addresses";
 
+type WishlistItem = {
+  id: number;
+  name: string;
+  price: number;
+  original?: number;
+  imgClass: string;
+  images?: string[];
+  tag?: string;
+};
+
 type SavedAddress = {
   id: string; label: string;
   name: string; phone: string;
@@ -54,23 +69,73 @@ type SavedAddress = {
 
 export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState<TabId>("orders");
+  const searchParams = useSearchParams();
+
+  /* ── Activate tab from URL ?tab= param ── */
+  useEffect(() => {
+    const tab = searchParams.get("tab") as TabId | null;
+    if (tab && ["orders", "profile", "wishlist", "addresses"].includes(tab)) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [profile, setProfile] = useState({ name: "", email: "", phone: "" });
   const [editMode, setEditMode] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [wishlistItems, setWishlistItems] = useState<WishlistItem[]>([]);
 
+  /* ── Load wishlist from localStorage ── */
   useEffect(() => {
     try {
-      const s = localStorage.getItem("kurthi_user_auth");
-      if (s) {
-        const u = JSON.parse(s);
-        setProfile(p => ({ ...p, name: u.name || "", email: u.email || "" }));
-      }
+      const stored = localStorage.getItem("kurthi_wishlist");
+      if (stored) setWishlistItems(JSON.parse(stored));
     } catch {}
   }, []);
 
-  /* ── Addresses ── */
+  const removeFromWishlist = (id: number) => {
+    const updated = wishlistItems.filter(i => i.id !== id);
+    setWishlistItems(updated);
+    try { localStorage.setItem("kurthi_wishlist", JSON.stringify(updated)); } catch {}
+  };
+
+  /* ── Bootstrap: load profile + orders from API ── */
+  useEffect(() => {
+    const cached = getCachedUserInfo();
+    if (cached) {
+      setProfile({ name: cached.name, email: cached.email, phone: cached.phone });
+    }
+    // Try live fetch
+    getUserProfile()
+      .then((u) => setProfile({ name: u.name, email: u.email, phone: u.phone }))
+      .catch(() => {
+        // If not authenticated at all, redirect to login
+        if (!cached) window.location.href = "/login";
+      })
+      .finally(() => setAuthLoading(false));
+
+    getMyOrders()
+      .then((raw) => {
+        const mapped = raw.map((o) => {
+          const converted = orderFromAPI(o);
+          return {
+            id:           converted.id,
+            date:         converted.date,
+            items:        converted.items.map((i) => ({ ...i, imgClass: "product-img-1" })),
+            total:        converted.total,
+            status:       converted.status as OrderStatus,
+            payMethod:    converted.payMethod,
+            address:      (o.city as string) || "",
+            customerName: converted.customer,
+          } as Order;
+        });
+        setOrders(mapped);
+      })
+      .catch(() => {/* orders failed – leave empty */});
+  }, []);
+
+  /* ── Addresses (stored locally) ── */
   const BLANK_ADDR = { id: "", label: "Home", name: "", phone: "", pincode: "", city: "", state: "", line1: "", line2: "", isDefault: false };
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
   const [showAddrForm, setShowAddrForm]     = useState(false);
@@ -79,17 +144,11 @@ export default function ProfilePage() {
 
   useEffect(() => {
     try {
-      const s = localStorage.getItem("kurthi_orders");
-      if (s) setOrders(JSON.parse(s));
-    } catch {}
-  }, []);
-
-  useEffect(() => {
-    try {
       const s = localStorage.getItem("kurthi_addresses");
       if (s) setSavedAddresses(JSON.parse(s));
     } catch {}
   }, []);
+
 
   const persistAddresses = (list: SavedAddress[]) => {
     setSavedAddresses(list);
@@ -215,11 +274,31 @@ export default function ProfilePage() {
     { id: "addresses", label: "Addresses",     icon: "📍" },
   ];
 
-  const saveProfile = () => {
+  const saveProfile = async () => {
+    try {
+      const updated = await updateUserProfile({ name: profile.name, phone: profile.phone });
+      setProfile({ name: updated.name, email: updated.email, phone: updated.phone });
+    } catch { /* ignore network errors */ }
     setEditMode(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
   };
+
+  const handleLogout = () => {
+    clearUserToken();
+    window.location.href = "/login";
+  };
+
+  if (authLoading && !profile.email) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--background)" }}>
+        <div style={{ textAlign: "center" }}>
+          <div className="text-2xl font-bold tracking-widest" style={{ fontFamily: "var(--font-cormorant, serif)", color: "var(--primary)" }}>KURTHĪ</div>
+          <p className="text-sm mt-2" style={{ color: "#aaa" }}>Loading your profile…</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--background)", fontFamily: "var(--font-jost, sans-serif)" }}>
@@ -267,6 +346,7 @@ export default function ProfilePage() {
                 </button>
               ))}
               <button
+                onClick={handleLogout}
                 className="w-full flex items-center gap-3 px-5 py-4 text-sm font-medium transition-all text-left"
                 style={{ background: "#fff", color: "#dc2626", border: "none", cursor: "pointer", borderLeft: "3px solid transparent" }}
               >
@@ -505,7 +585,7 @@ export default function ProfilePage() {
                   {[
                     { label: "Orders",     value: orders.length,          icon: "📦" },
                     { label: "Delivered",  value: orders.filter((o) => o.status === "delivered").length, icon: "✅" },
-                    { label: "Wishlist",   value: 5,                           icon: "❤️" },
+                    { label: "Wishlist",   value: wishlistItems.length,        icon: "❤️" },
                     { label: "Savings",    value: "₹2,801",                    icon: "💰" },
                   ].map(({ label, value, icon }) => (
                     <div key={label} className="rounded-2xl p-4 text-center" style={{ background: "#fff", border: "1px solid var(--cream-dark)" }}>
@@ -522,33 +602,61 @@ export default function ProfilePage() {
             {activeTab === "wishlist" && (
               <div>
                 <h2 className="font-bold mb-6" style={{ fontFamily: "var(--font-cormorant, serif)", fontSize: "1.6rem", color: "var(--primary)" }}>My Wishlist</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                  {[
-                    { name: "Royal Bandhani Kurta Set",    price: 4199, imgClass: "product-img-4", tag: "New"  },
-                    { name: "Phulkari Embroidered Suit",   price: 4899, imgClass: "product-img-3", tag: "New"  },
-                    { name: "Ikat Silk Festive Kurta",     price: 3799, imgClass: "product-img-2", tag: undefined },
-                    { name: "Floral Georgette Straight",   price: 2099, imgClass: "product-img-3", tag: "Hot"  },
-                    { name: "Heavy Bridal Patiala Set",    price: 7499, imgClass: "product-img-4", tag: "Luxe" },
-                  ].map((item) => (
-                    <div key={item.name} className="flex gap-4 p-4 rounded-2xl card-lift" style={{ background: "#fff", border: "1px solid var(--cream-dark)" }}>
-                      <div className={`${item.imgClass} w-20 h-24 rounded-xl flex-shrink-0 flex items-center justify-center relative`}>
-                        <span style={{ fontSize: "2rem", opacity: 0.25 }}>🥻</span>
-                        {item.tag && (
-                          <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-full text-xs font-bold" style={{ background: "var(--primary)", color: "#fff", fontSize: "0.6rem" }}>{item.tag}</span>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0 flex flex-col justify-between">
-                        <p className="font-semibold text-sm leading-tight" style={{ fontFamily: "var(--font-cormorant, serif)", color: "var(--foreground)" }}>{item.name}</p>
-                        <div className="flex items-center justify-between mt-2">
-                          <span className="font-bold" style={{ color: "var(--primary)", fontFamily: "var(--font-jost, sans-serif)" }}>₹{item.price.toLocaleString("en-IN")}</span>
-                          <button className="btn-primary px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide" style={{ cursor: "pointer" }}>
-                            Add to Cart
-                          </button>
+                {wishlistItems.length === 0 ? (
+                  <div className="text-center py-16 rounded-2xl" style={{ background: "#fff", border: "1px solid var(--cream-dark)" }}>
+                    <div className="text-5xl mb-4">❤️</div>
+                    <p className="font-semibold text-lg" style={{ fontFamily: "var(--font-cormorant, serif)", color: "var(--primary)" }}>Your wishlist is empty</p>
+                    <p className="text-sm mt-1" style={{ color: "#888" }}>Heart a product to save it here.</p>
+                    <a href="/products">
+                      <button className="btn-primary mt-5 px-7 py-3 rounded-full text-sm font-semibold tracking-wide uppercase" style={{ cursor: "pointer" }}>Browse Products</button>
+                    </a>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    {wishlistItems.map((item) => (
+                      <div key={item.id} className="flex gap-4 p-4 rounded-2xl card-lift" style={{ background: "#fff", border: "1px solid var(--cream-dark)" }}>
+                        {/* Product image */}
+                        <div className="w-20 h-24 rounded-xl flex-shrink-0 overflow-hidden relative" style={{ background: "var(--cream)" }}>
+                          {item.images?.[0] ? (
+                            <img src={item.images[0]} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                          ) : (
+                            <div className={`${item.imgClass} w-full h-full flex items-center justify-center`}>
+                              <span style={{ fontSize: "2rem", opacity: 0.25 }}>🥻</span>
+                            </div>
+                          )}
+                          {item.tag && (
+                            <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-full text-xs font-bold" style={{ background: "var(--primary)", color: "#fff", fontSize: "0.6rem" }}>{item.tag}</span>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0 flex flex-col justify-between">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="font-semibold text-sm leading-tight" style={{ fontFamily: "var(--font-cormorant, serif)", color: "var(--foreground)" }}>{item.name}</p>
+                            <button
+                              onClick={() => removeFromWishlist(item.id)}
+                              style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626", flexShrink: 0, padding: "2px" }}
+                              title="Remove"
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M18 6 6 18M6 6l12 12"/>
+                              </svg>
+                            </button>
+                          </div>
+                          <div className="flex items-center justify-between mt-2">
+                            <div className="flex items-baseline gap-2">
+                              <span className="font-bold" style={{ color: "var(--primary)", fontFamily: "var(--font-jost, sans-serif)" }}>₹{item.price.toLocaleString("en-IN")}</span>
+                              {item.original && item.original > item.price && (
+                                <span className="text-xs line-through" style={{ color: "#aaa" }}>₹{item.original.toLocaleString("en-IN")}</span>
+                              )}
+                            </div>
+                            <a href="/products">
+                              <button className="btn-primary px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide" style={{ cursor: "pointer" }}>Shop Now</button>
+                            </a>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 

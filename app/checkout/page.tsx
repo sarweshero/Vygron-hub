@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import Navbar from "@/app/components/Navbar";
+import { BASE, getCachedUserInfo, getUserToken } from "@/lib/api";
 
 const STEPS = ["Address", "Payment", "Confirmation"];
 
@@ -44,6 +45,14 @@ function StepBadge({ n, label, active, done }: { n: number; label: string; activ
 export default function CheckoutPage() {
   const [step, setStep] = useState<0 | 1 | 2>(0);
   const [placedOrderId, setPlacedOrderId] = useState("");
+
+  /* Redirect to login if not authenticated */
+  useEffect(() => {
+    try {
+      if (!getUserToken()) window.location.href = "/login";
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* Saved addresses from profile */
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
@@ -116,27 +125,39 @@ export default function CheckoutPage() {
     return true;
   };
 
-  const handlePlaceOrder = () => {
+  const handlePlaceOrder = async () => {
     setProcessing(true);
+    const userInfo  = getCachedUserInfo();
+    const userToken = getUserToken();
     const orderId = "KCI-" + new Date().getFullYear() + "-" + Math.floor(10000 + Math.random() * 89999);
+    const dateStr = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
     setPlacedOrderId(orderId);
-    const newOrder = {
-      id: orderId,
-      date: new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
-      items: cartItems.map(i => ({ name: i.name, qty: i.qty, size: i.size, price: i.price, imgClass: i.imgClass })),
-      total: cartTotal,
-      status: "placed" as const,
-      customerName: addr.name,
-      address: [addr.line1, addr.line2, addr.city, addr.state + " – " + addr.pincode].filter(Boolean).join(", "),
-      payMethod: payMethod.toUpperCase(),
-    };
+
+    /* POST to API — primary method */
     try {
-      const prev = localStorage.getItem("kurthi_orders");
-      const existing = prev ? JSON.parse(prev) : [];
-      localStorage.setItem("kurthi_orders", JSON.stringify([newOrder, ...existing]));
-      localStorage.removeItem("kurthi_cart");
-    } catch {}
-    setTimeout(() => { setProcessing(false); setStep(2); }, 2000);
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (userToken) headers["Authorization"] = `Bearer ${userToken}`;
+      await fetch(`${BASE}/orders/`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          id:         orderId,
+          customer:   addr.name,
+          email:      userInfo?.email ?? "",
+          phone:      addr.phone,
+          city:       addr.city,
+          date:       dateStr,
+          total:      cartTotal,
+          pay_method: payMethod.toUpperCase(),
+          items:      cartItems.map(i => ({ name: i.name, qty: i.qty, size: i.size, price: i.price })),
+        }),
+      });
+    } catch { /* backend unreachable — proceed anyway */ }
+
+    /* clear cart */
+    try { localStorage.removeItem("kurthi_cart"); } catch {}
+    setProcessing(false);
+    setStep(2);
   };
 
   /* ── Confirmation Screen ── */

@@ -1,7 +1,11 @@
-      "use client";
+"use client";
 
 import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
+import {
+  apiLogin, apiGet, apiPost, apiPatch, apiDelete,
+  productFromAPI, productToAPI, orderFromAPI, clearToken,
+} from "@/lib/api";
 
 /* ═══════════════════════════ TYPES ═══════════════════════════════ */
 type AdminProduct = {
@@ -99,6 +103,16 @@ const CATEGORIES_CHART = [
   { name:"Others",       pct:7,  color:"#ccc"           },
 ];
 
+const CAT_COLORS: Record<string,string> = {
+  "Festive":      "var(--primary)",
+  "Designer":     "var(--accent)",
+  "Casual Wear":  "#5580c8",
+  "Embroidered":  "#2a8c7c",
+  "Block Print":  "#d4a32a",
+  "Silk & Satin": "#9b7ec8",
+  "Others":       "#ccc",
+};
+
 const APPAREL_SIZES = ["XS","S","M","L","XL","XXL","3XL"];
 const NUMBER_SIZES  = ["28","30","32","34","36","38","40","42","44"];
 const ALL_SIZES     = [...APPAREL_SIZES, ...NUMBER_SIZES];
@@ -115,7 +129,7 @@ const STATUS_CFG: Record<OrderStatus,{bg:string;color:string;label:string}> = {
 };
 
 /* ═══════════════════════════ HELPERS ════════════════════════════ */
-function fmt(n: number) { return n.toLocaleString("en-IN"); }
+function fmt(n: number) { return (n ?? 0).toLocaleString("en-IN"); }
 function fmtR(n: number) { return "₹" + fmt(n); }
 
 /* ──── SVG Line Chart ──── */
@@ -220,19 +234,23 @@ type TabId = "dashboard" | "products" | "orders" | "analytics";
 
 export default function AdminPage() {
   const [tab, setTab] = useState<TabId>("dashboard");
-  const [products, setProducts] = useState<AdminProduct[]>(SEED_PRODUCTS);
-  const [orders, setOrders]     = useState<AdminOrder[]>(SEED_ORDERS);
+  const [products, setProducts] = useState<AdminProduct[]>([]);
+  const [orders, setOrders]     = useState<AdminOrder[]>([]);
+  const [dataLoading, setDataLoading] = useState(false);
 
-  /* ── Sync products to localStorage so home page can read them ── */
-  useEffect(() => {
-    localStorage.setItem("kurthi_products", JSON.stringify(products));
-  }, [products]);
+  type DashMonth = { label: string; value: number };
+  type DashStats = {
+    revenue_by_month:   DashMonth[];
+    orders_by_month:    DashMonth[];
+    category_breakdown: { name: string; pct: number }[];
+  };
+  const [dashStats, setDashStats] = useState<DashStats | null>(null);
 
   /* ── Add Product form ── */
   const BLANK = { name:"",mrp:"",price:"",sizes:[] as string[],description:"",deliveryDays:"5",category:"Casual Wear",fabric:"Cotton",tag:"",stock:"",imgClass:"product-img-1",colorHex:"#c97d4a",images:[] as string[],offerFrom:"",offerTo:"" };
   const [form, setForm]       = useState(BLANK);
   const [formErr, setFormErr] = useState<Record<string,string>>({});
-  const [addSuccess, setAddSuccess] = useState(false);
+  const [addSuccess, setAddSuccess] = useState<string|null>(null);
   const [editId, setEditId]   = useState<number | null>(null);
   const [customSizeInput, setCustomSizeInput] = useState("");
 
@@ -240,8 +258,39 @@ export default function AdminPage() {
   const [authed, setAuthed]     = useState<boolean | null>(null);
 
   useEffect(() => {
-    setAuthed(localStorage.getItem("kurthi_admin_auth")==="1");
+    // Check for stored JWT token instead of legacy flag
+    try {
+      const token = localStorage.getItem("kurthi_admin_token");
+      setAuthed(!!token);
+    } catch {
+      setAuthed(false);
+    }
   }, []);
+
+  /* ── Load products + orders + dashboard from API once logged in ── */
+  useEffect(() => {
+    if (!authed) return;
+    const load = async () => {
+      setDataLoading(true);
+      try {
+        const [prodsRes, ordsRes, dashRes] = await Promise.all([
+          apiGet<{ results: Record<string, unknown>[] } | Record<string, unknown>[]>("/products/"),
+          apiGet<{ results: Record<string, unknown>[] } | Record<string, unknown>[]>("/orders/"),
+          apiGet<Record<string, unknown>>("/dashboard/"),
+        ]);
+        const prods = Array.isArray(prodsRes) ? prodsRes : (prodsRes as { results: Record<string, unknown>[] }).results;
+        const ords  = Array.isArray(ordsRes)  ? ordsRes  : (ordsRes  as { results: Record<string, unknown>[] }).results;
+        setProducts(prods.map(p => productFromAPI(p) as AdminProduct));
+        setOrders(ords.map(o => orderFromAPI(o) as AdminOrder));
+        setDashStats(dashRes as unknown as DashStats);
+      } catch (e) {
+        console.error("Failed to load data:", e);
+      } finally {
+        setDataLoading(false);
+      }
+    };
+    load();
+  }, [authed]);
   const [loginUser, setLoginUser]         = useState("");
   const [loginPass, setLoginPass]         = useState("");
   const [loginErr, setLoginErr]           = useState("");
@@ -250,11 +299,12 @@ export default function AdminPage() {
   /* ── Image upload ── */
   const [dragOver, setDragOver] = useState(false);
 
-  const handleLogin = () => {
-    if(loginUser.trim()==="vygron" && loginPass==="vygron"){
-      localStorage.setItem("kurthi_admin_auth","1");
-      setAuthed(true); setLoginErr("");
-    } else {
+  const handleLogin = async () => {
+    try {
+      await apiLogin(loginUser.trim(), loginPass);
+      setAuthed(true);
+      setLoginErr("");
+    } catch {
       setLoginErr("Incorrect username or password. Please try again.");
     }
   };
@@ -291,17 +341,34 @@ export default function AdminPage() {
   const [restockQty, setRestockQty] = useState("");
   const [restockErr, setRestockErr] = useState("");
 
-  const handleRestock = () => {
+  const handleRestock = async () => {
     const qty = parseInt(restockQty, 10);
     if(!restockQty || isNaN(qty) || qty < 1) { setRestockErr("Enter a valid quantity (min 1)."); return; }
-    setProducts(prev=>prev.map(p=>p.id===restockDialog!.id?{...p,stock:p.stock+qty}:p));
+    const prod = products.find(p => p.id === restockDialog!.id);
+    if (!prod) return;
+    try {
+      const updated = await apiPatch<Record<string, unknown>>(`/products/${restockDialog!.id}/`, { stock: prod.stock + qty });
+      setProducts(prev => prev.map(p => p.id === restockDialog!.id ? productFromAPI(updated) as AdminProduct : p));
+    } catch (e) { console.error("Restock failed:", e); }
     setRestockDialog(null); setRestockQty(""); setRestockErr("");
   };
 
   /* ── Analytics metric toggle ── */
   const [metric, setMetric] = useState<"revenue"|"orders"|"visitors">("revenue");
-  const metricData = metric === "revenue" ? REVENUE_DATA : metric === "orders" ? ORDERS_DATA : VISITORS_DATA;
-  const metricLabel = metric === "revenue" ? REVENUE_DATA.map(fmtR) : metric === "orders" ? ORDERS_DATA.map(String) : VISITORS_DATA.map(fmt);
+
+  /* ── Live chart data (from API, fall back to static seed) ── */
+  const chartMonths    = dashStats?.revenue_by_month.map(m => m.label)  ?? MONTHS;
+  const chartRevenue   = dashStats?.revenue_by_month.map(m => m.value)  ?? REVENUE_DATA;
+  const chartOrders    = dashStats?.orders_by_month.map(m => m.value)   ?? ORDERS_DATA;
+  const chartCategories = dashStats?.category_breakdown.map(c => ({
+    name: c.name, pct: c.pct, color: CAT_COLORS[c.name] ?? "#ccc",
+  })) ?? CATEGORIES_CHART;
+  const peakRevIdx   = chartRevenue.indexOf(Math.max(...chartRevenue));
+  const peakRevLabel = chartMonths[peakRevIdx] ?? "";
+  const peakRevVal   = chartRevenue[peakRevIdx] ?? 0;
+
+  const metricData  = metric === "revenue" ? chartRevenue  : metric === "orders" ? chartOrders : VISITORS_DATA;
+  const metricLabel = metric === "revenue" ? chartRevenue.map(fmtR) : metric === "orders" ? chartOrders.map(String) : VISITORS_DATA.map(fmt);
 
   /* — Derived stats — */
   const totalRevenue  = orders.filter(o=>o.status!=="cancelled").reduce((s,o)=>s+o.total,0);
@@ -326,24 +393,40 @@ export default function AdminPage() {
   }),[orders,orderStatus,orderSearch]);
 
   /* — Toggle home display — */
-  const toggleHome = (id:number) =>  setProducts(prev=>prev.map(p=>p.id===id?{...p,showOnHome:!p.showOnHome}:p));
+  const toggleHome = async (id:number) => {
+    try {
+      const updated = await apiPatch<Record<string, unknown>>(`/products/${id}/toggle_home/`);
+      setProducts(prev => prev.map(p => p.id === id ? productFromAPI(updated) as AdminProduct : p));
+    } catch (e) { console.error("toggleHome failed:", e); }
+  };
 
   /* — Toggle order status — */
   const nextStatus: Record<OrderStatus,OrderStatus|null> = { placed:"confirmed",confirmed:"shipped",shipped:"out_for_delivery",out_for_delivery:"delivered",delivered:null,cancelled:null };
-  const advanceOrder = (id:string) => setOrders(prev=>prev.map(o=>{
-    if(o.id!==id) return o;
-    const next = nextStatus[o.status];
-    return next ? {...o,status:next} : o;
-  }));
-  const cancelOrder = (id:string) => setOrders(prev=>prev.map(o=>o.id===id?{...o,status:"cancelled" as OrderStatus}:o));
+  const advanceOrder = async (id:string) => {
+    try {
+      const updated = await apiPatch<Record<string, unknown>>(`/orders/${id}/advance_status/`);
+      setOrders(prev => prev.map(o => o.id === id ? orderFromAPI(updated) as AdminOrder : o));
+    } catch (e) { console.error("advanceOrder failed:", e); }
+  };
+  const cancelOrder = async (id:string) => {
+    try {
+      const updated = await apiPatch<Record<string, unknown>>(`/orders/${id}/cancel/`);
+      setOrders(prev => prev.map(o => o.id === id ? orderFromAPI(updated) as AdminOrder : o));
+    } catch (e) { console.error("cancelOrder failed:", e); }
+  };
 
   /* — Add / Edit Product — */
   const toggleSize = (s:string) => setForm(f=>({...f,sizes:f.sizes.includes(s)?f.sizes.filter(x=>x!==s):[...f.sizes,s]}));
 
   const loadEdit = (p: AdminProduct) => {
     setEditId(p.id);
-    setForm({ name:p.name, mrp:String(p.mrp), price:String(p.price), sizes:p.sizes, description:p.description, deliveryDays:String(p.deliveryDays), category:p.category, fabric:p.fabric, tag:p.tag??"", stock:String(p.stock), imgClass:p.imgClass, colorHex:p.colorHex, images:p.images??[], offerFrom:p.offerFrom??"", offerTo:p.offerTo??"" });
+    setFormErr({});
+    setAddSuccess(null);
+    setForm({ name:p.name??"", mrp:String(p.mrp||0), price:String(p.price||0), sizes:p.sizes??[], description:p.description??"", deliveryDays:String(p.deliveryDays||5), category:p.category??"Casual Wear", fabric:p.fabric??"Cotton", tag:p.tag??"", stock:String(p.stock??0), imgClass:p.imgClass??"product-img-1", colorHex:p.colorHex??"#c97d4a", images:p.images??[], offerFrom:p.offerFrom??"", offerTo:p.offerTo??"" });
     setCustomSizeInput("");
+    // reset file input so the same file can be re-selected after clearing
+    const fi = document.getElementById("img-upload-input") as HTMLInputElement|null;
+    if(fi) fi.value = "";
     setTab("products");
     setTimeout(()=>document.getElementById("add-product-section")?.scrollIntoView({behavior:"smooth"}),100);
   };
@@ -361,32 +444,47 @@ export default function AdminPage() {
     return Object.keys(e).length===0;
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if(!validateForm()) return;
     const offerFrom = form.offerFrom||undefined;
     const offerTo   = form.offerTo||undefined;
-    if(editId!==null){
-      setProducts(prev=>prev.map(p=>p.id===editId?{...p,name:form.name,mrp:+form.mrp,price:+form.price,sizes:form.sizes,description:form.description,deliveryDays:+form.deliveryDays,category:form.category,fabric:form.fabric,tag:form.tag||undefined,stock:+form.stock,imgClass:form.imgClass,colorHex:form.colorHex,images:form.images,offerFrom,offerTo}:p));
-      setEditId(null);
-    } else {
-      const newProd:AdminProduct = {
-        id:Date.now(), name:form.name, mrp:+form.mrp, price:+form.price, sizes:form.sizes,
-        description:form.description, deliveryDays:+form.deliveryDays, category:form.category,
-        fabric:form.fabric, imgClass:form.imgClass as AdminProduct["imgClass"],
-        tag:form.tag||undefined, stock:+form.stock, sold:0, rating:0,
-        showOnHome:false, isNew:true, isBestseller:false, colorHex:form.colorHex, images:form.images,
-        offerFrom, offerTo,
-      };
-      setProducts(prev=>[newProd,...prev]);
-    }
-    setForm(BLANK);
-    setAddSuccess(true);
-    setTimeout(()=>setAddSuccess(false),3000);
+    const payload = productToAPI({
+      name: form.name, mrp: +form.mrp, price: +form.price, sizes: form.sizes,
+      description: form.description, deliveryDays: +form.deliveryDays,
+      category: form.category, fabric: form.fabric, tag: form.tag||undefined,
+      stock: +form.stock, imgClass: form.imgClass, colorHex: form.colorHex,
+      images: form.images, offerFrom, offerTo,
+    });
+    try {
+      const wasEdit = editId !== null;
+      if(wasEdit){
+        const updated = await apiPatch<Record<string, unknown>>(`/products/${editId}/`, payload);
+        setProducts(prev => prev.map(p => p.id === editId ? productFromAPI(updated) as AdminProduct : p));
+        setEditId(null);
+      } else {
+        const created = await apiPost<Record<string, unknown>>("/products/", payload);
+        setProducts(prev => [productFromAPI(created) as AdminProduct, ...prev]);
+      }
+      setForm(BLANK);
+      setFormErr({});
+      setAddSuccess(wasEdit ? "Product updated successfully!" : "Product added successfully!");
+      setTimeout(()=>setAddSuccess(null),4000);
+    } catch (e) { console.error("handleSubmit failed:", e); }
   };
 
-  const deleteProduct = (id:number) => setProducts(prev=>prev.filter(p=>p.id!==id));
+  const deleteProduct = async (id:number) => {
+    try {
+      await apiDelete(`/products/${id}/`);
+      setProducts(prev => prev.filter(p => p.id !== id));
+    } catch (e) { console.error("deleteProduct failed:", e); }
+  };
 
-  const markOutOfStock = (id:number) => setProducts(prev=>prev.map(p=>p.id===id?{...p,stock:0}:p));
+  const markOutOfStock = async (id:number) => {
+    try {
+      const updated = await apiPatch<Record<string, unknown>>(`/products/${id}/out_of_stock/`);
+      setProducts(prev => prev.map(p => p.id === id ? productFromAPI(updated) as AdminProduct : p));
+    } catch (e) { console.error("markOutOfStock failed:", e); }
+  };
 
   const printInvoice = (order: AdminOrder) => {
     const win = window.open("","_blank","width=820,height=750");
@@ -573,7 +671,7 @@ export default function AdminPage() {
             View Site
           </Link>
           <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold" style={{background:"rgba(255,255,255,0.2)",color:"#fff"}}>A</div>
-          <button onClick={()=>{localStorage.removeItem("kurthi_admin_auth");setAuthed(false);}} className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium" style={{background:"rgba(255,255,255,0.1)",color:"rgba(255,255,255,0.7)",border:"1px solid rgba(255,255,255,0.18)",cursor:"pointer"}}>
+          <button onClick={()=>{clearToken();setAuthed(false);setProducts([]);setOrders([]);}} className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium" style={{background:"rgba(255,255,255,0.1)",color:"rgba(255,255,255,0.7)",border:"1px solid rgba(255,255,255,0.18)",cursor:"pointer"}}>
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
             Logout
           </button>
@@ -589,6 +687,15 @@ export default function AdminPage() {
           </button>
         ))}
       </nav>
+
+      {dataLoading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{background:"rgba(255,255,255,0.7)"}}>
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-10 h-10 rounded-full border-4 border-t-transparent animate-spin" style={{borderColor:"var(--primary)",borderTopColor:"transparent"}}/>
+            <span className="text-sm font-medium" style={{color:"var(--primary)",fontFamily:"var(--font-jost,sans-serif)"}}>Loading...</span>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
 
@@ -630,20 +737,20 @@ export default function AdminPage() {
                   <h2 className="font-bold" style={{fontFamily:"var(--font-cormorant,serif)",fontSize:"1.25rem",color:"var(--primary)"}}>Revenue Trend</h2>
                   <span className="text-xs px-2 py-1 rounded-lg" style={{background:"var(--cream)",color:"var(--accent)",fontWeight:600}}>Last 6 Months</span>
                 </div>
-                <p className="text-xs mb-5" style={{color:"#aaa"}}>Sep 2025 — Feb 2026</p>
+                <p className="text-xs mb-5" style={{color:"#aaa"}}>{chartMonths[0]} — {chartMonths[chartMonths.length-1]}</p>
                 <div className="flex items-end justify-between mb-1" style={{height:"28px"}}>
-                  {REVENUE_DATA.map((v,i)=>(
+                  {chartRevenue.map((v,i)=>(
                     <span key={i} className="text-xs text-center flex-1" style={{color:"#bbb",fontSize:"0.6rem"}}>
                       {v>=100000?`₹${(v/100000).toFixed(1)}L`:`₹${Math.round(v/1000)}K`}
                     </span>
                   ))}
                 </div>
-                <BarChart data={REVENUE_DATA} color="var(--primary)" labels={MONTHS}/>
+                <BarChart data={chartRevenue} color="var(--primary)" labels={chartMonths}/>
                 <div className="mt-4 flex items-center gap-4 flex-wrap">
                   <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-sm" style={{background:"var(--primary)"}}/>
                     <span className="text-xs" style={{color:"#888"}}>Monthly Revenue</span>
                   </div>
-                  <span className="ml-auto text-xs font-bold" style={{color:"var(--primary)"}}>Peak: Dec ₹6.87L</span>
+                  <span className="ml-auto text-xs font-bold" style={{color:"var(--primary)"}}>Peak: {peakRevLabel} {peakRevVal>=100000?`₹${(peakRevVal/100000).toFixed(2)}L`:`₹${Math.round(peakRevVal/1000)}K`}</span>
                 </div>
               </div>
 
@@ -651,7 +758,7 @@ export default function AdminPage() {
               <div className="rounded-2xl p-6" style={{background:"#fff",border:"1px solid var(--cream-dark)",boxShadow:"0 2px 16px rgba(0,0,0,0.04)"}}>
                 <h2 className="font-bold mb-1" style={{fontFamily:"var(--font-cormorant,serif)",fontSize:"1.25rem",color:"var(--primary)"}}>Sales by Category</h2>
                 <p className="text-xs mb-5" style={{color:"#aaa"}}>All-time distribution</p>
-                <DonutChart slices={CATEGORIES_CHART}/>
+                <DonutChart slices={chartCategories}/>
               </div>
             </div>
 
@@ -745,12 +852,12 @@ export default function AdminPage() {
                 <h2 className="font-bold" style={{fontFamily:"var(--font-cormorant,serif)",fontSize:"1.5rem",color:editId?"var(--accent)":"var(--primary)"}}>
                   {editId?"✏️ Edit Product":"➕ Add New Product"}
                 </h2>
-                {editId&&<button onClick={()=>{setEditId(null);setForm(BLANK);}} className="text-sm px-4 py-2 rounded-xl" style={{background:"var(--cream)",color:"#888",border:"none",cursor:"pointer"}}>Cancel Edit</button>}
+                {editId&&<button onClick={()=>{setEditId(null);setForm(BLANK);setFormErr({});setAddSuccess(null);}} className="text-sm px-4 py-2 rounded-xl" style={{background:"var(--cream)",color:"#888",border:"none",cursor:"pointer"}}>Cancel Edit</button>}
               </div>
 
               {addSuccess&&(
                 <div className="mb-5 px-4 py-3 rounded-xl text-sm flex items-center gap-2" style={{background:"#f0fdf4",border:"1px solid #bbf7d0",color:"#15803d"}}>
-                  ✓ {editId?"Product updated":"Product added"} successfully!
+                  ✓ {addSuccess}
                 </div>
               )}
 
@@ -1005,7 +1112,7 @@ export default function AdminPage() {
                 <button onClick={handleSubmit} className="btn-primary px-10 py-4 rounded-2xl text-sm font-semibold tracking-wider uppercase" style={{cursor:"pointer"}}>
                   {editId?"Update Product":"Add Product"}
                 </button>
-                <button onClick={()=>{setForm(BLANK);setFormErr({});setEditId(null);setCustomSizeInput("");}} className="btn-outline px-6 py-4 rounded-2xl text-sm font-semibold" style={{cursor:"pointer"}}>
+                <button onClick={()=>{setForm(BLANK);setFormErr({});setEditId(null);setCustomSizeInput("");setAddSuccess(null);}} className="btn-outline px-6 py-4 rounded-2xl text-sm font-semibold" style={{cursor:"pointer"}}>
                   Clear
                 </button>
               </div>
@@ -1024,8 +1131,11 @@ export default function AdminPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {products.map(p=>(
                   <div key={p.id} className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{background:"#fff",border:`1.5px solid ${p.showOnHome?"var(--primary)":"var(--cream-dark)"}`}}>
-                    <div className={`${p.imgClass} w-10 h-11 rounded-lg flex-shrink-0 flex items-center justify-center`}>
-                      <span style={{fontSize:"1.1rem",opacity:0.3}}>🥻</span>
+                    <div className={`${p.imgClass} w-10 h-11 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center`}>
+                      {p.images?.[0]
+                        ? <img src={p.images[0]} alt={p.name} style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"top"}}/>
+                        : <span style={{fontSize:"1.1rem",opacity:0.3}}>🥻</span>
+                      }
                     </div>
                     <span className="text-xs font-semibold flex-1 min-w-0 leading-tight" style={{color:"var(--foreground)",fontFamily:"var(--font-cormorant,serif)"}}>{p.name}</span>
                     <button
@@ -1065,8 +1175,11 @@ export default function AdminPage() {
                         <tr key={p.id} style={{borderBottom:"1px solid var(--cream-dark)",background:i%2===0?"#fff":"#fffaf7"}}>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-3">
-                              <div className={`${p.imgClass} w-9 h-10 rounded-lg flex-shrink-0 flex items-center justify-center`}>
-                                <span style={{fontSize:"1rem",opacity:0.3}}>🥻</span>
+                              <div className={`${p.imgClass} w-9 h-10 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center`}>
+                                {p.images?.[0]
+                                  ? <img src={p.images[0]} alt={p.name} style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"top"}}/>
+                                  : <span style={{fontSize:"1rem",opacity:0.3}}>🥻</span>
+                                }
                               </div>
                               <div>
                                 <p className="font-semibold leading-tight whitespace-nowrap" style={{fontFamily:"var(--font-cormorant,serif)",color:"var(--foreground)",maxWidth:"160px",overflow:"hidden",textOverflow:"ellipsis"}}>{p.name}</p>
@@ -1243,7 +1356,7 @@ export default function AdminPage() {
           <div className="flex flex-col gap-8">
             <div>
               <h1 className="font-bold" style={{fontFamily:"var(--font-cormorant,serif)",fontSize:"clamp(1.8rem,3vw,2.5rem)",color:"var(--primary)"}}>Analytics & Trends</h1>
-              <p className="text-sm mt-1" style={{color:"#888"}}>6-month performance overview · Sep 2025 — Feb 2026</p>
+              <p className="text-sm mt-1" style={{color:"#888"}}>6-month performance overview · {chartMonths[0]} — {chartMonths[chartMonths.length-1]}</p>
             </div>
 
             {/* Trend Metric Selector */}
@@ -1265,11 +1378,11 @@ export default function AdminPage() {
               </div>
               <LineChart data={metricData} color="var(--primary)" height={120}/>
               <div className="flex items-center gap-6 mt-5 pt-4" style={{borderTop:"1px solid var(--cream-dark)"}}>
-                {MONTHS.map((m,i)=>(
+                {chartMonths.map((m,i)=>(
                   <div key={m} className="flex-1 text-center">
                     <p className="text-xs font-semibold" style={{color:"var(--foreground)"}}>{m}</p>
                     <p className="text-xs mt-0.5" style={{color:"var(--accent)"}}>
-                      {metric==="revenue"?`₹${(REVENUE_DATA[i]/1000).toFixed(0)}K`:metric==="orders"?ORDERS_DATA[i]:VISITORS_DATA[i]}
+                      {metric==="revenue"?`₹${((chartRevenue[i]??0)/1000).toFixed(0)}K`:metric==="orders"?(chartOrders[i]??0):VISITORS_DATA[i]}
                     </p>
                   </div>
                 ))}
@@ -1304,10 +1417,10 @@ export default function AdminPage() {
               {/* Category performance */}
               <div className="rounded-2xl p-6" style={{background:"#fff",border:"1px solid var(--cream-dark)",boxShadow:"0 2px 16px rgba(0,0,0,0.04)"}}>
                 <h2 className="font-bold mb-5" style={{fontFamily:"var(--font-cormorant,serif)",fontSize:"1.25rem",color:"var(--primary)"}}>Category Revenue</h2>
-                <DonutChart slices={CATEGORIES_CHART}/>
+                <DonutChart slices={chartCategories}/>
                 <div className="mt-5 pt-4" style={{borderTop:"1px solid var(--cream-dark)"}}>
                   <div className="flex flex-col gap-2">
-                    {CATEGORIES_CHART.map(c=>(
+                    {chartCategories.map(c=>(
                       <div key={c.name} className="flex items-center gap-3">
                         <div className="w-2 h-2 rounded-full flex-shrink-0" style={{background:c.color}}/>
                         <span className="text-xs flex-1" style={{color:"#666"}}>{c.name}</span>
@@ -1327,9 +1440,9 @@ export default function AdminPage() {
               <h2 className="font-bold mb-2" style={{fontFamily:"var(--font-cormorant,serif)",fontSize:"1.25rem",color:"var(--primary)"}}>Monthly Order Volume</h2>
               <p className="text-xs mb-5" style={{color:"#aaa"}}>Total orders per month across all categories</p>
               <div className="flex items-end justify-between mb-1" style={{height:"22px"}}>
-                {ORDERS_DATA.map((v,i)=><span key={i} className="text-xs flex-1 text-center" style={{color:"#bbb",fontSize:"0.65rem"}}>{v}</span>)}
+                {chartOrders.map((v,i)=><span key={i} className="text-xs flex-1 text-center" style={{color:"#bbb",fontSize:"0.65rem"}}>{v}</span>)}
               </div>
-              <BarChart data={ORDERS_DATA} color="var(--accent)" labels={MONTHS}/>
+              <BarChart data={chartOrders} color="var(--accent)" labels={chartMonths}/>
             </div>
 
             {/* Top products table */}
@@ -1469,11 +1582,11 @@ export default function AdminPage() {
 function ALabel({children}:{children:React.ReactNode}){
   return <label className="block text-xs font-semibold tracking-wide mb-1.5" style={{color:"#666"}}>{children}</label>;
 }
-function AInput({value,onChange,placeholder,type="text",err}:{value:string;onChange:(v:string)=>void;placeholder?:string;type?:string;err?:string}){
+function AInput({value,onChange,placeholder,type="text",err}:{value:string|undefined|null;onChange:(v:string)=>void;placeholder?:string;type?:string;err?:string}){
   return(
     <div>
       <input
-        type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder}
+        type={type} value={value ?? ""} onChange={e=>onChange(e.target.value)} placeholder={placeholder}
         className="w-full px-4 py-3 rounded-xl text-sm outline-none transition-all"
         style={{border:`1.5px solid ${err?"#fca5a5":"var(--cream-dark)"}`,fontFamily:"var(--font-jost,sans-serif)",color:"var(--foreground)"}}
         onFocus={e=>(e.currentTarget.style.borderColor="var(--primary)")}

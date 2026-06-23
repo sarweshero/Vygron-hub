@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { userLogin } from "@/lib/api";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -11,16 +12,24 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!email || !password) { setError("Please enter your email and password."); return; }
     if (!/\S+@\S+\.\S+/.test(email)) { setError("Please enter a valid email address."); return; }
     setError("");
     setLoading(true);
-    setTimeout(() => {
+    try {
+      await userLogin(email.trim().toLowerCase(), password);
+      window.location.href = "/profile";
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("401")) {
+        setError("Invalid email or password.");
+      } else {
+        setError("Something went wrong. Please try again.");
+      }
+    } finally {
       setLoading(false);
-      try { localStorage.setItem("kurthi_user_auth", JSON.stringify({ name: email.split("@")[0], email })); } catch {}
-      window.location.href = "/";
-    }, 1800);
+    }
   };
 
   return (

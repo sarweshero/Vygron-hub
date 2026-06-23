@@ -11,6 +11,7 @@ type CartItem = {
   price: number;
   original?: number;
   imgClass: string;
+  images?: string[];
   size: string;
   color: string;
   colorHex: string;
@@ -126,10 +127,18 @@ export default function CartPage() {
                 >
                   {/* Product image */}
                   <div
-                    className={`${item.imgClass} rounded-xl flex-shrink-0 flex items-center justify-center`}
-                    style={{ width: "110px", height: "130px" }}
+                    className={`${item.images?.[0] ? "" : item.imgClass} rounded-xl flex-shrink-0 overflow-hidden flex items-center justify-center`}
+                    style={{ width: "110px", height: "130px", background: item.images?.[0] ? "#f5ede3" : undefined }}
                   >
-                    <span style={{ fontSize: "3rem", opacity: 0.25 }}>🥻</span>
+                    {item.images?.[0] ? (
+                      <img
+                        src={item.images[0]}
+                        alt={item.name}
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      />
+                    ) : (
+                      <span style={{ fontSize: "3rem", opacity: 0.25 }}>🥻</span>
+                    )}
                   </div>
 
                   {/* Details */}

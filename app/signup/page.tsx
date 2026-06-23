@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { userRegister } from "@/lib/api";
 
 export default function SignupPage() {
   const [form, setForm] = useState({ name: "", email: "", phone: "", password: "", confirm: "" });
@@ -24,14 +25,22 @@ export default function SignupPage() {
     return Object.keys(e).length === 0;
   };
 
-  const handleSignup = () => {
+  const handleSignup = async () => {
     if (!validate()) return;
     setLoading(true);
-    setTimeout(() => {
+    try {
+      await userRegister(form.name.trim(), form.email.trim().toLowerCase(), form.phone.trim(), form.password);
+      window.location.href = "/profile";
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("already exists") || msg.includes("400")) {
+        setErrors((e) => ({ ...e, email: "An account with this email already exists." }));
+      } else {
+        setErrors((e) => ({ ...e, agree: "Something went wrong. Please try again." }));
+      }
+    } finally {
       setLoading(false);
-      try { localStorage.setItem("kurthi_user_auth", JSON.stringify({ name: form.name, email: form.email })); } catch {}
-      window.location.href = "/";
-    }, 2000);
+    }
   };
 
   const strength = (() => {

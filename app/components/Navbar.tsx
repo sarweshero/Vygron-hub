@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { getCachedUserInfo } from "@/lib/api";
 
 const NAV_LINKS = ["New Arrivals", "Collections"];
 
@@ -40,11 +41,8 @@ export default function Navbar({
           setCartCount(items.reduce((sum, i) => sum + i.qty, 0));
         }
       }
-      const auth = localStorage.getItem("kurthi_user_auth");
-      if (auth) {
-        const u = JSON.parse(auth);
-        setUserName(u.name?.split(" ")[0] || "");
-      }
+      const info = getCachedUserInfo();
+      if (info) setUserName(info.name?.split(" ")[0] || "");
     } catch {}
   }, [cartCountProp]);
 
@@ -111,11 +109,8 @@ export default function Navbar({
           )} */}
 
           {/* Wishlist – full only */}
-          {/* {variant === "full" && (
-            <button
-              className="relative p-2 transition-transform hover:scale-110"
-              style={{ background: "none", border: "none", cursor: "pointer" }}
-            >
+          {variant === "full" && (
+            <Link href="/profile?tab=wishlist" className="relative p-2 transition-transform hover:scale-110" style={{ display: "flex", alignItems: "center", textDecoration: "none" }}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill={wishlistCount > 0 ? "var(--primary)" : "none"} stroke="var(--primary)" strokeWidth="1.8">
                 <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
               </svg>
@@ -124,8 +119,8 @@ export default function Navbar({
                   {wishlistCount}
                 </span>
               )}
-            </button>
-          )} */}
+            </Link>
+          )}
 
           {/* Account / User – full and simple */}
           {(variant === "full" || variant === "simple") && (

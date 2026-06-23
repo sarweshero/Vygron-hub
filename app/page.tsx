@@ -1,9 +1,11 @@
 "use client";
 // page.tsx – Kurthī Couture | Premium Ethnic Wear Home Page
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import Navbar from "@/app/components/Navbar";
 import Footer from "@/app/components/Footer";
+import ImageSlider from "@/app/components/ImageSlider";
+import { BASE, getUserToken } from "@/lib/api";
 
 /* ─── Data ──────────────────────────────────────────────── */
 
@@ -24,6 +26,7 @@ type HomeProduct = {
   original: string;
   tag: string;
   imgClass: string;
+  images?: string[];
   rating: number;
   reviews: number;
   outOfStock: boolean;
@@ -41,7 +44,7 @@ type DetailProduct = HomeProduct & {
 
 function toHomeProduct(p: {
   id:number; name:string; mrp:number; price:number; tag?:string;
-  imgClass:string; rating:number; sold:number; stock:number;
+  imgClass:string; images?:string[]; rating:number; sold:number; stock:number;
 }): HomeProduct {
   const fmt = (n:number) => "\u20b9" + n.toLocaleString("en-IN");
   return {
@@ -51,17 +54,27 @@ function toHomeProduct(p: {
     original: p.mrp !== p.price ? fmt(p.mrp) : "",
     tag: p.tag ?? "",
     imgClass: p.imgClass,
+    images: p.images ?? [],
     rating: p.rating || 4.5,
     reviews: p.sold || 0,
     outOfStock: p.stock === 0,
   };
 }
 
+const FALLBACK_IMG: Record<string, string> = {
+  "product-img-1": "https://images.unsplash.com/photo-1610030469983-98e550d6193c?auto=format&fit=crop&w=600&q=80",
+  "product-img-2": "https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?auto=format&fit=crop&w=600&q=80",
+  "product-img-3": "https://images.unsplash.com/photo-1529260830199-42c24126f198?auto=format&fit=crop&w=600&q=80",
+  "product-img-4": "https://images.unsplash.com/photo-1614786269829-d24616faf56d?auto=format&fit=crop&w=600&q=80",
+  "product-img-5": "https://images.unsplash.com/photo-1573740144655-bfa6156ad484?auto=format&fit=crop&w=600&q=80",
+  "product-img-6": "https://images.unsplash.com/photo-1617450365226-9bf28c04e130?auto=format&fit=crop&w=600&q=80",
+};
+
 const FALLBACK_ARRIVALS: HomeProduct[] = [
-  { id: 1, name: "Gulabi Anarkali Suit",      price: "\u20b93,499", original: "\u20b94,999", tag: "New",  imgClass: "product-img-1", rating: 4.9, reviews: 284, outOfStock: false },
-  { id: 2, name: "Zari Weave Straight Kurta", price: "\u20b92,799", original: "\u20b93,999", tag: "Hot",  imgClass: "product-img-2", rating: 4.8, reviews: 174, outOfStock: false },
-  { id: 3, name: "Chikankari Lucknowi Kurta", price: "\u20b92,299", original: "\u20b93,299", tag: "Sale", imgClass: "product-img-3", rating: 4.7, reviews: 432, outOfStock: false },
-  { id: 7, name: "Organza Silk Flared Kurta", price: "\u20b95,499", original: "\u20b96,999", tag: "New",  imgClass: "product-img-1", rating: 4.9, reviews: 62,  outOfStock: false },
+  { id: 1, name: "Gulabi Anarkali Suit",      price: "₹3,499", original: "₹4,999", tag: "New",  imgClass: "product-img-1", images: [FALLBACK_IMG["product-img-1"]], rating: 4.9, reviews: 284, outOfStock: false },
+  { id: 2, name: "Zari Weave Straight Kurta", price: "₹2,799", original: "₹3,999", tag: "Hot",  imgClass: "product-img-2", images: [FALLBACK_IMG["product-img-2"]], rating: 4.8, reviews: 174, outOfStock: false },
+  { id: 3, name: "Chikankari Lucknowi Kurta", price: "₹2,299", original: "₹3,299", tag: "Sale", imgClass: "product-img-3", images: [FALLBACK_IMG["product-img-3"]], rating: 4.7, reviews: 432, outOfStock: false },
+  { id: 7, name: "Organza Silk Flared Kurta", price: "₹5,499", original: "₹6,999", tag: "New",  imgClass: "product-img-1", images: [FALLBACK_IMG["product-img-1"]], rating: 4.9, reviews: 62,  outOfStock: false },
 ];
 
 const FEATURED = [
@@ -93,47 +106,83 @@ export default function Home() {
   const [homeProducts, setHomeProducts] = useState<HomeProduct[]>(FALLBACK_ARRIVALS);
   const [selectedProduct, setSelectedProduct] = useState<DetailProduct | null>(null);
   const [selectedSize, setSelectedSize] = useState("");  const [sizeError, setSizeError]             = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rawProductsRef = useRef<Record<string, any>[]>([]);
   const [authPrompt, setAuthPrompt]           = useState(false);
   const [searchQuery, setSearchQuery]         = useState("");
   const [activeTag, setActiveTag]             = useState("All");
+  const [wishlistToast, setWishlistToast]     = useState<{ show: boolean; added: boolean }>({ show: false, added: false });
+
+  /* ── Hydrate wishlist IDs from localStorage ── */
   useEffect(() => {
-    const derive = () => {
-      const raw = localStorage.getItem("kurthi_products");
-      if (!raw) return FALLBACK_ARRIVALS;
-      const all: (Parameters<typeof toHomeProduct>[0] & {showOnHome?: boolean})[] = JSON.parse(raw);
-      const approved = all.filter(p => p.showOnHome).map(toHomeProduct);
-      return approved.length > 0 ? approved : FALLBACK_ARRIVALS;
-    };
-    setHomeProducts(derive());
+    try {
+      const stored = localStorage.getItem("kurthi_wishlist");
+      if (stored) {
+        const items: { id: number }[] = JSON.parse(stored);
+        setWishlist(items.map(i => i.id));
+      }
+    } catch {}
   }, []);
 
-  const toggleWishlist = (id: number) =>
-    setWishlist((prev) => prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]);
+  useEffect(() => {
+    const loadHomeProducts = async () => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const data: Record<string, any>[] = await fetch(`${BASE}/products/home/`).then(r => r.json());
+        rawProductsRef.current = data;
+        const mapped = data.map(p => toHomeProduct({
+          id: p.id, name: p.name, mrp: parseFloat(p.mrp), price: parseFloat(p.price),
+          tag: p.tag || undefined, imgClass: p.img_class, images: (p.images as string[]) ?? [], rating: p.rating, sold: p.sold, stock: p.stock,
+        }));
+        if (mapped.length > 0) setHomeProducts(mapped);
+      } catch {
+        /* keep FALLBACK_ARRIVALS */
+      }
+    };
+    loadHomeProducts();
+  }, []);
+
+  const toggleWishlist = (id: number) => {
+    const product = homeProducts.find(p => p.id === id);
+    try {
+      const stored: { id: number; name: string; price: number; original?: number; imgClass: string; images?: string[]; tag?: string }[] =
+        JSON.parse(localStorage.getItem("kurthi_wishlist") || "[]");
+      const isIn = stored.some(i => i.id === id);
+      let updated: typeof stored;
+      if (isIn) {
+        updated = stored.filter(i => i.id !== id);
+      } else if (product) {
+        const priceNum = parseInt(String(product.price).replace(/[^\d]/g, ""), 10);
+        const origNum  = product.original ? parseInt(String(product.original).replace(/[^\d]/g, ""), 10) : undefined;
+        updated = [...stored, { id, name: product.name, price: priceNum, original: origNum, imgClass: product.imgClass, images: product.images, tag: product.tag }];
+      } else {
+        updated = stored;
+      }
+      localStorage.setItem("kurthi_wishlist", JSON.stringify(updated));
+      setWishlist(updated.map(i => i.id));
+      setWishlistToast({ show: true, added: !isIn });
+      setTimeout(() => setWishlistToast(t => ({ ...t, show: false })), 2000);
+    } catch {
+      setWishlist(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+    }
+  };
 
   const openProduct = (hp: HomeProduct) => {
     setSelectedSize("");
     try {
-      const raw = localStorage.getItem("kurthi_products");
-      if (raw) {
-        const all: (Parameters<typeof toHomeProduct>[0] & {
-          showOnHome?:boolean; description?:string; fabric?:string;
-          category?:string; deliveryDays?:number; sizes?:string[];
-          colorHex?:string; mrp:number;
-        })[] = JSON.parse(raw);
-        const full = all.find(p => p.id === hp.id);
-        if (full) {
-          setSelectedProduct({
-            ...hp,
-            description: full.description ?? "",
-            fabric: full.fabric ?? "",
-            category: full.category ?? "",
-            deliveryDays: full.deliveryDays ?? 5,
-            sizes: full.sizes ?? [],
-            colorHex: full.colorHex ?? "#7b1e3a",
-            discount: full.mrp > full.price ? Math.round(((full.mrp - full.price) / full.mrp) * 100) : 0,
-          });
-          return;
-        }
+      const full = rawProductsRef.current.find(p => p.id === hp.id);
+      if (full) {
+        setSelectedProduct({
+          ...hp,
+          description: full.description ?? "",
+          fabric: full.fabric ?? "",
+          category: full.category ?? "",
+          deliveryDays: full.delivery_days ?? 5,
+          sizes: full.sizes ?? [],
+          colorHex: full.color_hex ?? "#7b1e3a",
+          discount: full.mrp > full.price ? Math.round(((parseFloat(full.mrp) - parseFloat(full.price)) / parseFloat(full.mrp)) * 100) : 0,
+        });
+        return;
       }
     } catch { /* ignore */ }
     setSelectedProduct({ ...hp, description: "", fabric: "", category: "", deliveryDays: 5, sizes: [], colorHex: "#7b1e3a", discount: 0 });
@@ -143,7 +192,7 @@ export default function Home() {
 
   const addToCart = (product: DetailProduct, size: string) => {
     /* auth check */
-    try { if (!localStorage.getItem("kurthi_user_auth")) { setAuthPrompt(true); return; } } catch {}
+    try { if (!getUserToken()) { setAuthPrompt(true); return; } } catch {}
     /* size check */
     if (product.sizes && product.sizes.length > 0 && !size) { setSizeError(true); return; }
     setSizeError(false);
@@ -153,6 +202,7 @@ export default function Home() {
       id: product.id, name: product.name,
       price: priceNum, original: originalNum,
       imgClass: product.imgClass,
+      images: product.images ?? [],
       size: size || "Free Size",
       color: product.colorHex, colorHex: product.colorHex,
       qty: 1, fabric: product.fabric || "",
@@ -410,10 +460,7 @@ export default function Home() {
                 style={{ background: "#fff", boxShadow: "0 4px 20px rgba(0,0,0,0.06)", cursor: "pointer" }}
                 onClick={() => openProduct(product)}
               >
-                <div className={`relative ${product.imgClass} overflow-hidden`} style={{ height: "340px" }}>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-8xl opacity-20 animate-float">🥻</span>
-                  </div>
+                <ImageSlider images={product.images ?? []} alt={product.name} imgClass={product.imgClass} style={{ height: "340px" }}>
                   {product.tag && (
                   <span
                     className="absolute top-3 left-3 px-3 py-1 rounded-full text-xs font-semibold tracking-wider uppercase"
@@ -459,7 +506,7 @@ export default function Home() {
                       </button>
                     )}
                   </div>
-                </div>
+                </ImageSlider>
                 <div className="p-4">
                   <h3 className="font-semibold truncate mb-1" style={{ fontFamily: "var(--font-cormorant, serif)", fontSize: "1.1rem", color: "var(--foreground)" }}>
                     {product.name}
@@ -753,8 +800,7 @@ export default function Home() {
 
             <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr" }} className="product-modal-grid">
               {/* Image panel */}
-              <div className={`${selectedProduct.imgClass} relative`} style={{ minHeight:"480px",display:"flex",alignItems:"center",justifyContent:"center" }}>
-                <span style={{ fontSize:"10rem",opacity:0.18 }}>🥻</span>
+              <ImageSlider images={selectedProduct.images ?? []} alt={selectedProduct.name} imgClass={selectedProduct.imgClass} alwaysShowControls showThumbs style={{ minHeight:"480px" }}>
                 {selectedProduct.tag && (
                   <span style={{ position:"absolute",top:"18px",left:"18px",background:selectedProduct.tag==="Sale"?"#dc2626":selectedProduct.tag==="Hot"?"var(--accent)":"var(--primary)",color:"#fff",padding:"5px 14px",borderRadius:"999px",fontSize:"0.72rem",fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase" }}>
                     {selectedProduct.tag}
@@ -765,7 +811,7 @@ export default function Home() {
                     <span style={{ background:"rgba(0,0,0,0.75)",color:"#fff",padding:"8px 20px",borderRadius:"999px",fontSize:"0.75rem",fontWeight:700,letterSpacing:"0.15em",textTransform:"uppercase" }}>Out of Stock</span>
                   </div>
                 )}
-              </div>
+              </ImageSlider>
 
               {/* Info panel */}
               <div style={{ padding:"40px 36px",display:"flex",flexDirection:"column",gap:"20px",overflowY:"auto",maxHeight:"520px" }}>
@@ -880,6 +926,35 @@ export default function Home() {
       <style>{`
         @media (max-width: 640px) {
           .product-modal-grid { grid-template-columns: 1fr !important; }
+        }
+      `}</style>
+
+      {/* ── WISHLIST TOAST ── */}
+      {wishlistToast.show && (
+        <div
+          style={{
+            position: "fixed", bottom: "1.5rem", right: "1.5rem", zIndex: 9999,
+            background: "var(--primary)", color: "#fff", borderRadius: "0.75rem",
+            padding: "0.75rem 1.25rem", display: "flex", alignItems: "center", gap: "0.6rem",
+            boxShadow: "0 4px 24px rgba(0,0,0,0.18)", fontFamily: "var(--font-jost, sans-serif)",
+            fontSize: "0.9rem", fontWeight: 500, animation: "fadeInUp 0.25s ease",
+          }}
+        >
+          <span>{wishlistToast.added ? "❤️" : "🤍"}</span>
+          <span>{wishlistToast.added ? "Added to Wishlist" : "Removed from Wishlist"}</span>
+          {wishlistToast.added && (
+            <a href="/profile?tab=wishlist" style={{ color: "var(--accent-light)", marginLeft: "0.4rem", textDecoration: "underline", fontSize: "0.8rem" }}>View</a>
+          )}
+        </div>
+      )}
+
+      <style>{`
+        @media (max-width: 640px) {
+          .product-modal-grid { grid-template-columns: 1fr !important; }
+        }
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(12px); }
+          to   { opacity: 1; transform: translateY(0); }
         }
       `}</style>
     </div>

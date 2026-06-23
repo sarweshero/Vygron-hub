@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import Navbar from "@/app/components/Navbar";
 import Footer from "@/app/components/Footer";
+import ImageSlider from "@/app/components/ImageSlider";
+import { BASE, getUserToken } from "@/lib/api";
 
 /* ─────────────────────────── TYPES ──────────────────────────────── */
 
@@ -14,6 +16,7 @@ type Product = {
   original?: number;
   tag?: string;
   imgClass: string;
+  images?: string[];
   rating: number;
   reviews: number;
   category: string;
@@ -29,23 +32,32 @@ type Product = {
 
 /* ─────────────────────────── DATA ───────────────────────────────── */
 
+const FALLBACK_IMG: Record<string, string> = {
+  "product-img-1": "https://images.unsplash.com/photo-1610030469983-98e550d6193c?auto=format&fit=crop&w=600&q=80",
+  "product-img-2": "https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?auto=format&fit=crop&w=600&q=80",
+  "product-img-3": "https://images.unsplash.com/photo-1529260830199-42c24126f198?auto=format&fit=crop&w=600&q=80",
+  "product-img-4": "https://images.unsplash.com/photo-1614786269829-d24616faf56d?auto=format&fit=crop&w=600&q=80",
+  "product-img-5": "https://images.unsplash.com/photo-1573740144655-bfa6156ad484?auto=format&fit=crop&w=600&q=80",
+  "product-img-6": "https://images.unsplash.com/photo-1617450365226-9bf28c04e130?auto=format&fit=crop&w=600&q=80",
+};
+
 const ALL_PRODUCTS: Product[] = [
-  { id: 1,  name: "Gulabi Anarkali Suit",        price: 3499, original: 4999, tag: "New",       imgClass: "product-img-1", rating: 4.9, reviews: 284, category: "Festive",      sizes: ["S","M","L","XL"],        fabric: "Georgette",  occasion: "Party",       color: "Rose",        colorHex: "#e89ca0", isNew: true,  isBestseller: true  },
-  { id: 2,  name: "Zari Weave Straight Kurta",   price: 2799, original: 3999, tag: "Hot",       imgClass: "product-img-2", rating: 4.8, reviews: 174, category: "Designer",     sizes: ["XS","S","M","L","XL"],   fabric: "Silk",       occasion: "Wedding",     color: "Burgundy",    colorHex: "#7b1e3a", isNew: true,  isBestseller: true  },
-  { id: 3,  name: "Chikankari Lucknowi Kurta",   price: 2299, original: 3299, tag: "Sale",      imgClass: "product-img-3", rating: 4.7, reviews: 432, category: "Casual Wear",  sizes: ["S","M","L","XL","XXL"],  fabric: "Cotton",     occasion: "Daily Wear",  color: "Ivory",       colorHex: "#f5ede3", isNew: false, isBestseller: true  },
-  { id: 4,  name: "Royal Bandhani Kurta Set",    price: 4199, original: undefined, tag: "New",  imgClass: "product-img-4", rating: 4.9, reviews: 98,  category: "Festive",      sizes: ["M","L","XL","XXL"],      fabric: "Chanderi",   occasion: "Festive",     color: "Gold",        colorHex: "#c97d4a", isNew: true,  isBestseller: false },
-  { id: 5,  name: "Cotton Dabu Block Print",     price: 1899, original: 2499, tag: "Sale",      imgClass: "product-img-5", rating: 4.6, reviews: 317, category: "Block Print",  sizes: ["XS","S","M","L"],        fabric: "Cotton",     occasion: "Daily Wear",  color: "Indigo",      colorHex: "#4a5fa3", isNew: false, isBestseller: false },
-  { id: 6,  name: "Kantha Stitch Long Kurta",    price: 3199, original: undefined, tag: undefined, imgClass: "product-img-6", rating: 4.7, reviews: 156, category: "Embroidered", sizes: ["S","M","L","XL"],      fabric: "Mul Cotton", occasion: "Party",       color: "Teal",        colorHex: "#2a8c7c", isNew: false, isBestseller: true  },
-  { id: 7,  name: "Organza Silk Flared Kurta",   price: 5499, original: 6999, tag: "New",       imgClass: "product-img-1", rating: 4.9, reviews: 62,  category: "Designer",     sizes: ["XS","S","M","L","XL"],   fabric: "Silk",       occasion: "Wedding",     color: "Champagne",   colorHex: "#e8d5b0", isNew: true,  isBestseller: false, outOfStock: true },
-  { id: 8,  name: "Tie-Dye Shibori Tunic",       price: 1599, original: 2199, tag: "Sale",      imgClass: "product-img-2", rating: 4.5, reviews: 203, category: "Casual Wear",  sizes: ["S","M","L","XL","XXL"],  fabric: "Rayon",      occasion: "Daily Wear",  color: "Blue",        colorHex: "#5580c8", isNew: false, isBestseller: false },
-  { id: 9,  name: "Phulkari Embroidered Suit",   price: 4899, original: 5999, tag: "New",       imgClass: "product-img-3", rating: 4.8, reviews: 87,  category: "Embroidered",  sizes: ["M","L","XL","XXL"],      fabric: "Georgette",  occasion: "Festive",     color: "Mustard",     colorHex: "#d4a32a", isNew: true,  isBestseller: false },
-  { id: 10, name: "Ajrakh Block Print A-Line",   price: 2499, original: 3299, tag: undefined,   imgClass: "product-img-4", rating: 4.6, reviews: 134, category: "Block Print",  sizes: ["XS","S","M","L"],        fabric: "Cotton",     occasion: "Office",      color: "Rust",        colorHex: "#c0552d", isNew: false, isBestseller: false },
-  { id: 11, name: "Kashmiri Crewel Kurta",       price: 6299, original: 7999, tag: "Luxe",      imgClass: "product-img-5", rating: 5.0, reviews: 41,  category: "Designer",     sizes: ["S","M","L","XL"],        fabric: "Wool Blend", occasion: "Wedding",     color: "Walnut",      colorHex: "#5c3525", isNew: true,  isBestseller: true  },
-  { id: 12, name: "Chanderi Anarkali Floor",     price: 5199, original: undefined, tag: "New",  imgClass: "product-img-6", rating: 4.8, reviews: 73,  category: "Festive",      sizes: ["XS","S","M","L","XL"],   fabric: "Chanderi",   occasion: "Party",       color: "Peach",       colorHex: "#e8a97a", isNew: true,  isBestseller: false },
-  { id: 13, name: "Linen Straight Everyday",     price: 1299, original: 1799, tag: "Sale",      imgClass: "product-img-1", rating: 4.4, reviews: 521, category: "Casual Wear",  sizes: ["S","M","L","XL","XXL","3XL"], fabric: "Linen",  occasion: "Daily Wear",  color: "Off-White",   colorHex: "#ede8e0", isNew: false, isBestseller: true  },
-  { id: 14, name: "Ikat Silk Festive Kurta",     price: 3799, original: 4999, tag: undefined,   imgClass: "product-img-2", rating: 4.7, reviews: 119, category: "Silk & Satin", sizes: ["XS","S","M","L"],        fabric: "Silk",       occasion: "Festive",     color: "Teal",        colorHex: "#2a8c7c", isNew: false, isBestseller: false },
-  { id: 15, name: "Floral Georgette Straight",   price: 2099, original: 2799, tag: "Hot",       imgClass: "product-img-3", rating: 4.6, reviews: 267, category: "Casual Wear",  sizes: ["S","M","L","XL","XXL"],  fabric: "Georgette",  occasion: "Office",      color: "Lavender",    colorHex: "#9b7ec8", isNew: false, isBestseller: false },
-  { id: 16, name: "Heavy Bridal Patiala Set",    price: 7499, original: 9999, tag: "Luxe",      imgClass: "product-img-4", rating: 4.9, reviews: 34,  category: "Designer",     sizes: ["S","M","L","XL"],        fabric: "Silk",       occasion: "Wedding",     color: "Maroon",      colorHex: "#8b1a2a", isNew: true,  isBestseller: true,  outOfStock: true  },
+  { id: 1,  name: "Gulabi Anarkali Suit",        price: 3499, original: 4999, tag: "New",       imgClass: "product-img-1", images: [FALLBACK_IMG["product-img-1"]], rating: 4.9, reviews: 284, category: "Festive",      sizes: ["S","M","L","XL"],        fabric: "Georgette",  occasion: "Party",       color: "Rose",        colorHex: "#e89ca0", isNew: true,  isBestseller: true  },
+  { id: 2,  name: "Zari Weave Straight Kurta",   price: 2799, original: 3999, tag: "Hot",       imgClass: "product-img-2", images: [FALLBACK_IMG["product-img-2"]], rating: 4.8, reviews: 174, category: "Designer",     sizes: ["XS","S","M","L","XL"],   fabric: "Silk",       occasion: "Wedding",     color: "Burgundy",    colorHex: "#7b1e3a", isNew: true,  isBestseller: true  },
+  { id: 3,  name: "Chikankari Lucknowi Kurta",   price: 2299, original: 3299, tag: "Sale",      imgClass: "product-img-3", images: [FALLBACK_IMG["product-img-3"]], rating: 4.7, reviews: 432, category: "Casual Wear",  sizes: ["S","M","L","XL","XXL"],  fabric: "Cotton",     occasion: "Daily Wear",  color: "Ivory",       colorHex: "#f5ede3", isNew: false, isBestseller: true  },
+  { id: 4,  name: "Royal Bandhani Kurta Set",    price: 4199, original: undefined, tag: "New",  imgClass: "product-img-4", images: [FALLBACK_IMG["product-img-4"]], rating: 4.9, reviews: 98,  category: "Festive",      sizes: ["M","L","XL","XXL"],      fabric: "Chanderi",   occasion: "Festive",     color: "Gold",        colorHex: "#c97d4a", isNew: true,  isBestseller: false },
+  { id: 5,  name: "Cotton Dabu Block Print",     price: 1899, original: 2499, tag: "Sale",      imgClass: "product-img-5", images: [FALLBACK_IMG["product-img-5"]], rating: 4.6, reviews: 317, category: "Block Print",  sizes: ["XS","S","M","L"],        fabric: "Cotton",     occasion: "Daily Wear",  color: "Indigo",      colorHex: "#4a5fa3", isNew: false, isBestseller: false },
+  { id: 6,  name: "Kantha Stitch Long Kurta",    price: 3199, original: undefined, tag: undefined, imgClass: "product-img-6", images: [FALLBACK_IMG["product-img-6"]], rating: 4.7, reviews: 156, category: "Embroidered", sizes: ["S","M","L","XL"],      fabric: "Mul Cotton", occasion: "Party",       color: "Teal",        colorHex: "#2a8c7c", isNew: false, isBestseller: true  },
+  { id: 7,  name: "Organza Silk Flared Kurta",   price: 5499, original: 6999, tag: "New",       imgClass: "product-img-1", images: [FALLBACK_IMG["product-img-1"]], rating: 4.9, reviews: 62,  category: "Designer",     sizes: ["XS","S","M","L","XL"],   fabric: "Silk",       occasion: "Wedding",     color: "Champagne",   colorHex: "#e8d5b0", isNew: true,  isBestseller: false, outOfStock: true },
+  { id: 8,  name: "Tie-Dye Shibori Tunic",       price: 1599, original: 2199, tag: "Sale",      imgClass: "product-img-2", images: [FALLBACK_IMG["product-img-2"]], rating: 4.5, reviews: 203, category: "Casual Wear",  sizes: ["S","M","L","XL","XXL"],  fabric: "Rayon",      occasion: "Daily Wear",  color: "Blue",        colorHex: "#5580c8", isNew: false, isBestseller: false },
+  { id: 9,  name: "Phulkari Embroidered Suit",   price: 4899, original: 5999, tag: "New",       imgClass: "product-img-3", images: [FALLBACK_IMG["product-img-3"]], rating: 4.8, reviews: 87,  category: "Embroidered",  sizes: ["M","L","XL","XXL"],      fabric: "Georgette",  occasion: "Festive",     color: "Mustard",     colorHex: "#d4a32a", isNew: true,  isBestseller: false },
+  { id: 10, name: "Ajrakh Block Print A-Line",   price: 2499, original: 3299, tag: undefined,   imgClass: "product-img-4", images: [FALLBACK_IMG["product-img-4"]], rating: 4.6, reviews: 134, category: "Block Print",  sizes: ["XS","S","M","L"],        fabric: "Cotton",     occasion: "Office",      color: "Rust",        colorHex: "#c0552d", isNew: false, isBestseller: false },
+  { id: 11, name: "Kashmiri Crewel Kurta",       price: 6299, original: 7999, tag: "Luxe",      imgClass: "product-img-5", images: [FALLBACK_IMG["product-img-5"]], rating: 5.0, reviews: 41,  category: "Designer",     sizes: ["S","M","L","XL"],        fabric: "Wool Blend", occasion: "Wedding",     color: "Walnut",      colorHex: "#5c3525", isNew: true,  isBestseller: true  },
+  { id: 12, name: "Chanderi Anarkali Floor",     price: 5199, original: undefined, tag: "New",  imgClass: "product-img-6", images: [FALLBACK_IMG["product-img-6"]], rating: 4.8, reviews: 73,  category: "Festive",      sizes: ["XS","S","M","L","XL"],   fabric: "Chanderi",   occasion: "Party",       color: "Peach",       colorHex: "#e8a97a", isNew: true,  isBestseller: false },
+  { id: 13, name: "Linen Straight Everyday",     price: 1299, original: 1799, tag: "Sale",      imgClass: "product-img-1", images: [FALLBACK_IMG["product-img-1"]], rating: 4.4, reviews: 521, category: "Casual Wear",  sizes: ["S","M","L","XL","XXL","3XL"], fabric: "Linen",  occasion: "Daily Wear",  color: "Off-White",   colorHex: "#ede8e0", isNew: false, isBestseller: true  },
+  { id: 14, name: "Ikat Silk Festive Kurta",     price: 3799, original: 4999, tag: undefined,   imgClass: "product-img-2", images: [FALLBACK_IMG["product-img-2"]], rating: 4.7, reviews: 119, category: "Silk & Satin", sizes: ["XS","S","M","L"],        fabric: "Silk",       occasion: "Festive",     color: "Teal",        colorHex: "#2a8c7c", isNew: false, isBestseller: false },
+  { id: 15, name: "Floral Georgette Straight",   price: 2099, original: 2799, tag: "Hot",       imgClass: "product-img-3", images: [FALLBACK_IMG["product-img-3"]], rating: 4.6, reviews: 267, category: "Casual Wear",  sizes: ["S","M","L","XL","XXL"],  fabric: "Georgette",  occasion: "Office",      color: "Lavender",    colorHex: "#9b7ec8", isNew: false, isBestseller: false },
+  { id: 16, name: "Heavy Bridal Patiala Set",    price: 7499, original: 9999, tag: "Luxe",      imgClass: "product-img-4", images: [FALLBACK_IMG["product-img-4"]], rating: 4.9, reviews: 34,  category: "Designer",     sizes: ["S","M","L","XL"],        fabric: "Silk",       occasion: "Wedding",     color: "Maroon",      colorHex: "#8b1a2a", isNew: true,  isBestseller: true,  outOfStock: true  },
 ];
 
 const CATEGORIES  = ["All", "Casual Wear", "Festive", "Embroidered", "Block Print", "Silk & Satin", "Designer"];
@@ -112,13 +124,14 @@ type FilterPanelProps = {
   setActiveFabric: (v: string) => void;
   activeOccasion: string;
   setActiveOccasion: (v: string) => void;
+  products: Product[];
 };
 
 function FilterPanel({
   filterCount, clearAll, searchQuery, setSearchQuery,
   activeCategory, setActiveCategory, activeSizes, toggleSize,
   priceRange, setPriceRange, activeFabric, setActiveFabric,
-  activeOccasion, setActiveOccasion,
+  activeOccasion, setActiveOccasion, products,
 }: FilterPanelProps) {
   return (
     <div style={{ fontFamily: "var(--font-jost, sans-serif)" }}>
@@ -179,7 +192,7 @@ function FilterPanel({
             >
               <span>{cat}</span>
               <span className="text-xs opacity-60">
-                {cat === "All" ? ALL_PRODUCTS.length : ALL_PRODUCTS.filter((p) => p.category === cat).length}
+                {cat === "All" ? products.length : products.filter((p) => p.category === cat).length}
               </span>
             </button>
           ))}
@@ -321,19 +334,72 @@ export default function ProductsPage() {
   const [searchQuery, setSearchQuery]         = useState("");
   const [filterOpen, setFilterOpen]           = useState(false);     // mobile
   const [wishlist, setWishlist]               = useState<number[]>([]);
+
+  /* ── Hydrate wishlist IDs from localStorage ── */
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("kurthi_wishlist");
+      if (stored) {
+        const items: { id: number }[] = JSON.parse(stored);
+        setWishlist(items.map(i => i.id));
+      }
+    } catch {}
+  }, []);
   const [cartCount, setCartCount]             = useState(0);
   const [hoveredId, setHoveredId]             = useState<number | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedSize, setSelectedSize]       = useState("");
   const [sizeError, setSizeError]             = useState(false);
   const [authPrompt, setAuthPrompt]           = useState(false);
+  const [wishlistToast, setWishlistToast]     = useState<{ show: boolean; added: boolean }>({ show: false, added: false });
+  const [allProducts, setAllProducts]         = useState<Product[]>(ALL_PRODUCTS);
+
+  /* ── Load products from API (all pages) ── */
+  useEffect(() => {
+    const load = async () => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const raw: Record<string, any>[] = [];
+        let url: string | null = `${BASE}/products/`;
+        while (url) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const res: any = await fetch(url).then(r => r.json());
+          const page: Record<string, any>[] = Array.isArray(res) ? res : (res.results ?? []);
+          raw.push(...page);
+          url = Array.isArray(res) ? null : (res.next ?? null);
+        }
+        const mapped: Product[] = raw.map(p => ({
+          id:           p.id,
+          name:         p.name          ?? "",
+          price:        parseFloat(p.price) || 0,
+          original:     parseFloat(p.mrp) !== parseFloat(p.price) ? parseFloat(p.mrp) : undefined,
+          tag:          p.tag || undefined,
+          imgClass:     p.img_class     ?? "product-img-1",
+          images:       (p.images       as string[]) ?? [],
+          rating:       p.rating        ?? 0,
+          reviews:      p.sold          ?? 0,
+          category:     p.category      ?? "",
+          sizes:        p.sizes         ?? [],
+          fabric:       p.fabric        ?? "",
+          occasion:     "Daily Wear",
+          color:        p.color_hex     ?? "",
+          colorHex:     p.color_hex     ?? "#7b1e3a",
+          isNew:        !!(p.is_new),
+          isBestseller: !!(p.is_bestseller),
+          outOfStock:   p.stock === 0,
+        }));
+        if (mapped.length > 0) setAllProducts(mapped);
+      } catch { /* keep fallback ALL_PRODUCTS */ }
+    };
+    load();
+  }, []);
 
   const openProduct  = (p: Product) => { setSelectedSize(""); setSelectedProduct(p); };
   const closeProduct = ()           => { setSelectedProduct(null); setSelectedSize(""); };
 
   const addToCart = (product: Product, size: string) => {
     /* auth check */
-    try { if (!localStorage.getItem("kurthi_user_auth")) { setAuthPrompt(true); return; } } catch {}
+    try { if (!getUserToken()) { setAuthPrompt(true); return; } } catch {}
     /* size check */
     if (product.sizes && product.sizes.length > 0 && !size) { setSizeError(true); return; }
     setSizeError(false);
@@ -341,6 +407,7 @@ export default function ProductsPage() {
       id: product.id, name: product.name,
       price: product.price, original: product.original,
       imgClass: product.imgClass,
+      images: product.images ?? [],
       size: size || (product.sizes[0] ?? "Free Size"),
       color: product.color, colorHex: product.colorHex,
       qty: 1, fabric: product.fabric,
@@ -357,12 +424,32 @@ export default function ProductsPage() {
   const toggleSize = (s: string) =>
     setActiveSizes((prev) => prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]);
 
-  const toggleWishlist = (id: number) =>
-    setWishlist((prev) => prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]);
+  const toggleWishlist = (id: number) => {
+    const product = allProducts.find(p => p.id === id);
+    try {
+      const stored: { id: number; name: string; price: number; original?: number; imgClass: string; images?: string[]; tag?: string }[] =
+        JSON.parse(localStorage.getItem("kurthi_wishlist") || "[]");
+      const isIn = stored.some(i => i.id === id);
+      let updated: typeof stored;
+      if (isIn) {
+        updated = stored.filter(i => i.id !== id);
+      } else if (product) {
+        updated = [...stored, { id, name: product.name, price: product.price, original: product.original, imgClass: product.imgClass, images: product.images, tag: product.tag }];
+      } else {
+        updated = stored;
+      }
+      localStorage.setItem("kurthi_wishlist", JSON.stringify(updated));
+      setWishlist(updated.map(i => i.id));
+      setWishlistToast({ show: true, added: !isIn });
+      setTimeout(() => setWishlistToast(t => ({ ...t, show: false })), 2000);
+    } catch {
+      setWishlist(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+    }
+  };
 
   /* — Filtered & sorted products — */
   const filtered = useMemo(() => {
-    let list = ALL_PRODUCTS.filter((p) => {
+    let list = allProducts.filter((p) => {
       if (activeCategory !== "All" && p.category !== activeCategory) return false;
       if (activeSizes.length > 0 && !activeSizes.some((s) => p.sizes.includes(s))) return false;
       if (activeFabric !== "All" && p.fabric !== activeFabric) return false;
@@ -384,7 +471,7 @@ export default function ProductsPage() {
       default: list = [...list].sort((a, b) => b.reviews - a.reviews);
     }
     return list;
-  }, [activeCategory, activeSizes, activeFabric, activeOccasion, priceRange, sortBy, searchQuery]);
+  }, [activeCategory, activeSizes, activeFabric, activeOccasion, priceRange, sortBy, searchQuery, allProducts]);
 
   /* — Active filter count — */
   const filterCount =
@@ -408,7 +495,7 @@ export default function ProductsPage() {
     filterCount, clearAll, searchQuery, setSearchQuery,
     activeCategory, setActiveCategory, activeSizes, toggleSize,
     priceRange, setPriceRange, activeFabric, setActiveFabric,
-    activeOccasion, setActiveOccasion,
+    activeOccasion, setActiveOccasion, products: allProducts,
   };
 
   return (
@@ -447,7 +534,7 @@ export default function ProductsPage() {
             All Collections
           </h1>
           <p style={{ color: "rgba(255,255,255,0.75)", fontSize: "1rem", maxWidth: "500px" }}>
-            Handcrafted Kurthi dresses for every occasion — explore {ALL_PRODUCTS.length}+ exclusive designs.
+            Handcrafted Kurthi dresses for every occasion — explore {allProducts.length}+ exclusive designs.
           </p>
           {/* Category Quick Tabs */}
           <div className="flex gap-3 mt-8 flex-wrap">
@@ -629,12 +716,7 @@ export default function ProductsPage() {
                     onClick={() => openProduct(product)}
                   >
                     {/* Image */}
-                    <div className={`relative ${product.imgClass} overflow-hidden`} style={{ height: gridCols === 3 ? "320px" : "260px" }}>
-                      {/* Fabric icon */}
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <span className="opacity-20 animate-float" style={{ fontSize: gridCols === 3 ? "7rem" : "5rem" }}>🥻</span>
-                      </div>
-
+                    <ImageSlider images={product.images ?? []} alt={product.name} imgClass={product.imgClass} style={{ height: gridCols === 3 ? "320px" : "260px" }}>
                       {/* Tag */}
                       {product.tag && <TagBadge tag={product.tag} />}
 
@@ -691,7 +773,7 @@ export default function ProductsPage() {
                           )}
                         </div>
                       </div>
-                    </div>
+                    </ImageSlider>
 
                     {/* Info */}
                     <div className="p-4">
@@ -821,8 +903,7 @@ export default function ProductsPage() {
 
             <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr" }} className="product-modal-grid">
               {/* Image panel */}
-              <div className={`${selectedProduct.imgClass} relative`} style={{ minHeight:"480px",display:"flex",alignItems:"center",justifyContent:"center" }}>
-                <span style={{ fontSize:"10rem",opacity:0.18 }}>🥻</span>
+              <ImageSlider images={selectedProduct.images ?? []} alt={selectedProduct.name} imgClass={selectedProduct.imgClass} alwaysShowControls showThumbs style={{ minHeight:"480px" }}>
                 {selectedProduct.tag && (
                   <span style={{ position:"absolute",top:"18px",left:"18px",background:selectedProduct.tag==="Sale"?"#dc2626":selectedProduct.tag==="Hot"?"var(--accent)":selectedProduct.tag==="Luxe"?"#1a1a1a":"var(--primary)",color:selectedProduct.tag==="Luxe"?"var(--accent-light)":"#fff",padding:"5px 14px",borderRadius:"999px",fontSize:"0.72rem",fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase" }}>
                     {selectedProduct.tag}
@@ -836,7 +917,7 @@ export default function ProductsPage() {
                     <span style={{ background:"rgba(0,0,0,0.75)",color:"#fff",padding:"8px 20px",borderRadius:"999px",fontSize:"0.75rem",fontWeight:700,letterSpacing:"0.15em",textTransform:"uppercase" }}>Out of Stock</span>
                   </div>
                 )}
-              </div>
+              </ImageSlider>
 
               {/* Info panel */}
               <div style={{ padding:"40px 36px",display:"flex",flexDirection:"column",gap:"20px",overflowY:"auto",maxHeight:"520px" }}>
@@ -936,7 +1017,30 @@ export default function ProductsPage() {
         @media (max-width: 640px) {
           .product-modal-grid { grid-template-columns: 1fr !important; }
         }
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(12px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
       `}</style>
+
+      {/* ── WISHLIST TOAST ── */}
+      {wishlistToast.show && (
+        <div
+          style={{
+            position: "fixed", bottom: "1.5rem", right: "1.5rem", zIndex: 9999,
+            background: "var(--primary)", color: "#fff", borderRadius: "0.75rem",
+            padding: "0.75rem 1.25rem", display: "flex", alignItems: "center", gap: "0.6rem",
+            boxShadow: "0 4px 24px rgba(0,0,0,0.18)", fontFamily: "var(--font-jost, sans-serif)",
+            fontSize: "0.9rem", fontWeight: 500, animation: "fadeInUp 0.25s ease",
+          }}
+        >
+          <span>{wishlistToast.added ? "❤️" : "🤍"}</span>
+          <span>{wishlistToast.added ? "Added to Wishlist" : "Removed from Wishlist"}</span>
+          {wishlistToast.added && (
+            <a href="/profile?tab=wishlist" style={{ color: "var(--accent-light)", marginLeft: "0.4rem", textDecoration: "underline", fontSize: "0.8rem" }}>View</a>
+          )}
+        </div>
+      )}
 
       {/* ── FOOTER ── */}
       <Footer />
