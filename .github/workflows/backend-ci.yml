@@ -1,0 +1,93 @@
+name: Backend CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Backend/**"
+      - ".github/workflows/backend-ci.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "Backend/**"
+      - ".github/workflows/backend-ci.yml"
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Backend/shop
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: Backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r ../requirements.txt
+
+      - name: Run migrations (SQLite test)
+        run: python manage.py migrate --settings=shop.test_settings
+
+      - name: Run tests
+        run: python manage.py test app.tests --settings=shop.test_settings --verbosity=2 --parallel
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Backend/shop
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Run ruff check
+        run: ruff check .
+
+      - name: Run ruff format check
+        run: ruff format --check .
+
+  deploy:
+    name: Deploy
+    needs: [test, lint]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to server
+        uses: easingthemes/ssh-deploy@v5
+        with:
+          SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          REMOTE_HOST: ${{ secrets.SERVER_HOST }}
+          REMOTE_USER: ${{ secrets.SERVER_USER }}
+          REMOTE_PORT: ${{ secrets.SERVER_PORT || 22 }}
+          SOURCE: "Backend/"
+          TARGET: "/home/ubuntu/Projects/vygron/Backend"
+          EXCLUDE: "Backend/.venv/, Backend/shop/db.sqlite3, Backend/shop/media/"
+          SCRIPT_AFTER: |
+            cd /home/ubuntu/Projects/vygron/Backend/shop
+            source ../venv/bin/activate
+            pip install -r ../requirements.txt
+            python manage.py migrate --noinput
+            sudo systemctl restart vygron || sudo systemctl restart gunicorn || echo "Restart manually"
