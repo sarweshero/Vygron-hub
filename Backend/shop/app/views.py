@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
 from django.db.models import Sum, Count, Q
 from django.utils import timezone
@@ -7,11 +8,12 @@ from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import Product, Order, OrderItem, UserProfile
+from .models import Product, Order, OrderItem, UserProfile, Shop
 from .serializers import (
     ProductSerializer, OrderSerializer,
     OrderStatusSerializer, DashboardSerializer,
     UserRegisterSerializer, UserProfileSerializer,
+    ShopRegisterSerializer, ShopSerializer
 )
 
 User = get_user_model()
@@ -149,7 +151,29 @@ class OrderViewSet(viewsets.ModelViewSet):
         order = serializer.save()
 
         for item in items_data:
-            OrderItem.objects.create(order=order, **item)
+            # Extract shop info from item if present
+            s_slug = item.pop("shop_slug", None)
+            item.pop("shop_name", None) # remove extra info
+            item.pop("id", None)        # remove product id if present
+            
+            # handle missing size
+            if "size" not in item:
+                item["size"] = "N/A"
+
+            # Find matching shop
+            item_shop = None
+            if s_slug:
+                try:
+                    item_shop = Shop.objects.get(slug=s_slug)
+                except Shop.DoesNotExist:
+                    pass
+            
+            # If order.shop is not set, set it to the first found shop
+            if not order.shop and item_shop:
+                order.shop = item_shop
+                order.save(update_fields=["shop"])
+
+            OrderItem.objects.create(order=order, shop=item_shop, **item)
 
         return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)
 
@@ -258,11 +282,25 @@ def _user_payload(user):
     except UserProfile.DoesNotExist:
         pass
     full_name = f"{user.first_name} {user.last_name}".strip() or user.email
+    user_type = "customer"
+    try:
+        user_type = user.profile.user_type
+    except UserProfile.DoesNotExist:
+        pass
+    shop_slug = ""
+    if user_type == "shop_owner":
+        try:
+            shop_slug = user.shop_profile.slug
+        except AttributeError:
+            pass
+
     return {
         "id":    user.pk,
         "name":  full_name,
         "email": user.email,
         "phone": phone,
+        "userType": user_type,
+        "shopSlug": shop_slug,
     }
 
 
@@ -278,6 +316,41 @@ def user_register(request):
         **_user_tokens(user),
         **_user_payload(user),
     }, status=status.HTTP_201_CREATED)
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def shop_register(request):
+    """POST /api/auth/shop-register/ — register a new shop."""
+    serializer = ShopRegisterSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    user = serializer.save()
+    # Note: We don't return tokens yet because shop owners are inactive until approved
+    return Response({
+        "detail": "Shop registration request sent. Please wait for admin approval.",
+        "email": user.email,
+        "shop_name": request.data.get("shop_name")
+    }, status=status.HTTP_201_CREATED)
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def get_public_shops(request):
+    """GET /api/shops/ — list all approved shops."""
+    shops = Shop.objects.filter(is_approved=True)
+    return Response(ShopSerializer(shops, many=True).data)
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def get_shop_details(request, slug):
+    """GET /api/shops/{slug}/ — public info for a shop page."""
+    try:
+        shop = Shop.objects.get(slug=slug, is_approved=True)
+        return Response(ShopSerializer(shop).data)
+    except Shop.DoesNotExist:
+        return Response({"detail": "Shop not found or not yet approved."}, status=status.HTTP_404_NOT_FOUND)
 
 
 @api_view(["POST"])
@@ -333,3 +406,213 @@ def user_orders(request):
     """GET /api/auth/orders/ — return all orders placed with the user's email."""
     orders = Order.objects.filter(email__iexact=request.user.email)
     return Response(OrderSerializer(orders, many=True).data)
+@api_view(["GET"])
+@permission_classes([IsAdminUser])
+def get_admin_shops(request):
+    """GET /api/admin/shops/ — list all shops for admin management."""
+    shops = Shop.objects.all().order_by("-id")
+    data = []
+    for s in shops:
+        data.append({
+            "id": s.id,
+            "owner_email": s.owner.email,
+            "name": s.name,
+            "slug": s.slug,
+            "description": s.description,
+            "business_details": s.business_details,
+            "is_approved": s.is_approved,
+            "created_at": s.owner.date_joined.strftime("%d %b %Y"),
+        })
+    return Response(data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAdminUser])
+def approve_shop(request, pk):
+    """POST /api/admin/shops/{pk}/approve/ — approve a shop and activate owner."""
+    try:
+        shop = Shop.objects.get(pk=pk)
+        shop.is_approved = True
+        shop.save()
+        user = shop.owner
+        user.is_active = True
+        user.save()
+        return Response({"detail": f"Shop '{shop.name}' and owner '{user.email}' have been approved and activated."})
+    except Shop.DoesNotExist:
+        return Response({"detail": "Shop not found."}, status=status.HTTP_404_NOT_FOUND)
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def user_change_password(request):
+    """POST /api/auth/change-password/ — update the logged-in user's password."""
+    old_password = request.data.get("old_password")
+    new_password = request.data.get("new_password")
+    if not old_password or not new_password:
+        return Response({"detail": "Old and new passwords are required."}, status=status.HTTP_400_BAD_REQUEST)
+    user = request.user
+    if not user.check_password(old_password):
+        return Response({"detail": "Incorrect old password."}, status=status.HTTP_400_BAD_REQUEST)
+    user.set_password(new_password)
+    user.save()
+    return Response({"detail": "Password updated successfully."})
+
+
+@api_view(["POST"])
+@permission_classes([IsAdminUser])
+def deactivate_shop(request, pk):
+    """POST /api/admin/shops/{pk}/deactivate/ — deactivate a shop and its owner."""
+    try:
+        shop = Shop.objects.get(pk=pk)
+        shop.is_approved = False
+        shop.save()
+        user = shop.owner
+        user.is_active = False
+        user.save()
+        return Response({"detail": f"Shop '{shop.name}' and owner '{user.email}' have been deactivated."})
+    except Shop.DoesNotExist:
+        return Response({"detail": "Shop not found."}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAdminUser])
+def delete_shop(request, pk):
+    """DELETE /api/admin/shops/{pk}/ — delete a shop and its owner account."""
+    try:
+        shop = Shop.objects.get(pk=pk)
+        name = shop.name
+        user = shop.owner
+        # Deleting the user will delete the shop due to CASCADE
+        user.delete()
+        return Response({"detail": f"Shop '{name}' and its owner account have been permanently deleted."})
+    except Shop.DoesNotExist:
+        return Response({"detail": "Shop not found."}, status=status.HTTP_404_NOT_FOUND)
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def update_user_shop(request):
+    """PATCH /api/shop/details/ — update the logged-in user's shop profile."""
+    try:
+        shop = request.user.shop_profile
+    except AttributeError:
+        return Response({"detail": "Shop profile not found."}, status=status.HTTP_404_NOT_FOUND)
+    
+    serializer = ShopSerializer(shop, data=request.data, partial=True)
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
+    return Response(serializer.data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def upload_image(request):
+    """POST /api/upload/ — upload an image and return its URL."""
+    file = request.FILES.get("image")
+    if not file:
+        return Response({"detail": "No image provided."}, status=status.HTTP_400_BAD_REQUEST)
+    
+    from django.core.files.storage import default_storage
+    filename = default_storage.save(f"uploads/{file.name}", file)
+    file_url = request.build_absolute_uri(settings.MEDIA_URL + filename)
+    
+    return Response({"url": file_url})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def shop_dashboard(request):
+    """GET /api/shop/dashboard/ — aggregated stats for the shop owner."""
+    try:
+        shop = request.user.shop_profile
+    except AttributeError:
+        return Response({"detail": "Shop profile not found."}, status=status.HTTP_404_NOT_FOUND)
+    
+    if not shop.is_approved:
+        return Response({"detail": "Shop not approved yet."}, status=status.HTTP_403_FORBIDDEN)
+
+    products = Product.objects.filter(shop=shop)
+    order_items = OrderItem.objects.filter(shop=shop).select_related('order')
+    
+    total_revenue = order_items.filter(order__status__in=["placed", "confirmed", "delivered"]).aggregate(s=Sum('price'))['s'] or 0
+    total_orders = order_items.values('order').distinct().count()
+    total_products = products.count()
+    low_stock_count = products.filter(stock__gt=0, stock__lte=5).count()
+    
+    # Recent orders for this shop
+    recent_order_ids = order_items.order_by('-order__created_at').values_list('order_id', flat=True)[:5]
+    recent_orders = Order.objects.filter(id__in=recent_order_ids).prefetch_related('items')
+
+    return Response({
+        "total_revenue": total_revenue,
+        "total_orders": total_orders,
+        "total_products": total_products,
+        "low_stock_count": low_stock_count,
+        "recent_orders": OrderSerializer(recent_orders, many=True).data,
+        "shop_name": shop.name,
+        "shop_slug": shop.slug,
+    })
+
+
+class MyShopProductViewSet(viewsets.ModelViewSet):
+    """ViewSet for shop owners to manage ONLY their own products."""
+    serializer_class = ProductSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        try:
+            return Product.objects.filter(shop=self.request.user.shop_profile).order_by("-is_featured", "-id")
+        except AttributeError:
+            return Product.objects.none()
+
+    def perform_create(self, serializer):
+        serializer.save(shop=self.request.user.shop_profile)
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def create_guest_order(request):
+    """
+    POST /api/guest-order/
+    Payload: {
+      shop_slug: string,
+      items: [{product_id: int, quantity: int}, ...],
+      customer_name: string,
+      customer_phone: string,
+      customer_address: string,
+      total_amount: number
+    }
+    """
+    data = request.data
+    try:
+        shop = Shop.objects.get(slug=data.get('shop_slug'))
+    except Shop.DoesNotExist:
+        return Response({"detail": "Shop not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    import uuid
+    import datetime
+    order_id = f"GUEST-{uuid.uuid4().hex[:6].upper()}"
+    
+    order = Order.objects.create(
+        id=order_id,
+        shop=shop,
+        customer=data.get('customer_name'),
+        phone=data.get('customer_phone'),
+        address=data.get('customer_address'),
+        total=data.get('total_amount'),
+        status="placed",
+        pay_method="Cash on Delivery"
+    )
+
+    for item in data.get('items', []):
+        try:
+            product = Product.objects.get(id=item.get('product_id'))
+            OrderItem.objects.create(
+                order=order,
+                shop=shop,
+                name=product.name,
+                qty=item.get('quantity'),
+                price=product.price,
+                size="N/A" # Default for now
+            )
+        except Product.DoesNotExist:
+            continue
+
+    return Response({
+        "detail": "Order placed successfully",
+        "order_id": order_id
+    }, status=status.HTTP_201_CREATED)

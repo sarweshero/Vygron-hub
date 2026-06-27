@@ -1,21 +1,20 @@
 /* ──────────────────────────────────────────────────────────────────
-   Kurthī – API utility
+   Vygron Hub – API utility
    Base URL: http://127.0.0.1:8000/api
    ────────────────────────────────────────────────────────────────── */
 
 export const BASE = "http://127.0.0.1:8000/api";
 
-/* ── Admin token helpers ───────────────────────────────────────── */
 export function getToken(): string | null {
-  try { return localStorage.getItem("kurthi_admin_token"); } catch { return null; }
+  try { return localStorage.getItem("vygron_admin_token"); } catch { return null; }
 }
 
 export function setToken(token: string) {
-  try { localStorage.setItem("kurthi_admin_token", token); } catch {}
+  try { localStorage.setItem("vygron_admin_token", token); } catch {}
 }
 
 export function clearToken() {
-  try { localStorage.removeItem("kurthi_admin_token"); } catch {}
+  try { localStorage.removeItem("vygron_admin_token"); } catch {}
 }
 
 function authHeaders(): Record<string, string> {
@@ -24,8 +23,8 @@ function authHeaders(): Record<string, string> {
 }
 
 /* ── User token helpers ────────────────────────────────────────── */
-const USER_TOKEN_KEY = "kurthi_user_token";
-const USER_INFO_KEY  = "kurthi_user_info";
+const USER_TOKEN_KEY = "vygron_user_token";
+const USER_INFO_KEY  = "vygron_user_info";
 
 export function getUserToken(): string | null {
   try { return localStorage.getItem(USER_TOKEN_KEY); } catch { return null; }
@@ -36,7 +35,7 @@ export function setUserToken(token: string) {
 export function clearUserToken() {
   try {
     localStorage.removeItem(USER_TOKEN_KEY);
-    localStorage.removeItem("kurthi_user_refresh");
+    localStorage.removeItem("vygron_user_refresh");
     localStorage.removeItem(USER_INFO_KEY);
   } catch {}
 }
@@ -96,6 +95,8 @@ export interface UserInfo {
   name:  string;
   email: string;
   phone: string;
+  userType: "customer" | "shop_owner";
+  shopSlug?: string;
 }
 
 export interface UserAuthResponse extends UserInfo {
@@ -106,9 +107,9 @@ export interface UserAuthResponse extends UserInfo {
 function saveUserAuth(data: UserAuthResponse) {
   setUserToken(data.access);
   try {
-    localStorage.setItem("kurthi_user_refresh", data.refresh);
+    localStorage.setItem("vygron_user_refresh", data.refresh);
     localStorage.setItem(USER_INFO_KEY, JSON.stringify({
-      id: data.id, name: data.name, email: data.email, phone: data.phone,
+      id: data.id, name: data.name, email: data.email, phone: data.phone, userType: data.userType, shopSlug: data.shopSlug
     }));
   } catch {}
 }
@@ -163,15 +164,107 @@ export async function userRegister(
   return result;
 }
 
+export interface ShopRegisterPayload {
+  name: string;
+  email: string;
+  phone: string;
+  password: string;
+  shop_name: string;
+  description: string;
+  business_details: string;
+}
+
+export async function shopRegister(payload: ShopRegisterPayload): Promise<{ detail: string; email: string; shop_name: string }> {
+  const data = await fetch(`${BASE}/auth/shop-register/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!data.ok) {
+    const text = await data.text().catch(() => "");
+    throw new Error(`${data.status}: ${text}`);
+  }
+  return (await data.json());
+}
+
+export const getAllShops = (): Promise<any[]> =>
+  fetch(`${BASE}/shops/`).then(res => res.json());
+
+export const getShopDetails = (slug: string): Promise<any> =>
+  fetch(`${BASE}/shops/${slug}/`).then(res => {
+    if (!res.ok) throw new Error("Shop not found");
+    return res.json();
+  });
+
+export const createGuestOrder = (payload: any): Promise<any> =>
+  fetch(`${BASE}/guest-order/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  }).then(res => {
+    if (!res.ok) throw new Error("Order creation failed");
+    return res.json();
+  });
+
+
 export const getUserProfile = (): Promise<UserInfo> =>
   userRequest<UserInfo>("GET", "/auth/profile/");
 
 export const updateUserProfile = (payload: Partial<UserInfo>): Promise<UserInfo> =>
   userRequest<UserInfo>("PATCH", "/auth/profile/", payload);
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const getMyOrders = (): Promise<Record<string, any>[]> =>
+export const getMyOrders = (): Promise<any[]> =>
   userRequest("GET", "/auth/orders/");
+
+export const changePassword = (oldPass: string, newPass: string) => 
+  userRequest<{detail: string}>("POST", "/auth/change-password/", { old_password: oldPass, new_password: newPass });
+
+/* ── Shop Owner Dashboard API ──────────────────────────────── */
+export interface ShopDashboardStats {
+  total_revenue: number;
+  total_orders: number;
+  total_products: number;
+  low_stock_count: number;
+  recent_orders: any[];
+  shop_name: string;
+  shop_slug: string;
+}
+
+export const getShopDashboardStats = () => 
+  userRequest<ShopDashboardStats>("GET", "/shop/dashboard/");
+
+export const updateShopSettings = (payload: any) => 
+  userRequest<any>("PATCH", "/shop/details/", payload);
+
+export const uploadImage = async (file: File) => {
+  const formData = new FormData();
+  formData.append("image", file);
+  
+  const token = localStorage.getItem("vygron_user_token");
+  const res = await fetch(`${BASE}/upload/`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${token}`
+    },
+    body: formData
+  });
+  
+  if (!res.ok) throw new Error("Upload failed");
+  return await res.json() as { url: string };
+};
+
+export const getShopProducts = () => 
+  userRequest<any[]>("GET", "/my-shop/products/");
+
+export const createShopProduct = (payload: any) => 
+  userRequest<any>("POST", "/my-shop/products/", payload);
+
+export const updateShopProduct = (id: number, payload: any) => 
+  userRequest<any>("PATCH", `/my-shop/products/${id}/`, payload);
+
+export const deleteShopProduct = (id: number) => 
+  userRequest<void>("DELETE", `/my-shop/products/${id}/`);
+
 
 /* ── Product field converters (snake_case ↔ camelCase) ─────────── */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -245,3 +338,20 @@ export function orderFromAPI(o: Record<string, any>) {
     payMethod: o.pay_method as string,
   };
 }
+
+export interface Shop {
+  id: number;
+  owner_email: string;
+  name: string;
+  slug: string;
+  description: string;
+  business_details: string;
+  is_approved: boolean;
+  created_at: string;
+}
+
+/* ── Shop Management (Admin) ────────────────────────────────── */
+export const getShops = () => apiGet<Shop[]>("/admin/shops/");
+export const approveShop = (id: number) => apiPost<{detail: string}>(`/admin/shops/${id}/approve/`, {});
+export const deactivateShop = (id: number) => apiPost<{detail: string}>(`/admin/shops/${id}/deactivate/`, {});
+export const deleteShop = (id: number) => apiDelete<{detail: string}>(`/admin/shops/${id}/`);

@@ -1,6 +1,6 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
-from .models import Product, Order, OrderItem, UserProfile
+from .models import Product, Order, OrderItem, UserProfile, Shop
 
 User = get_user_model()
 
@@ -12,20 +12,20 @@ class ProductSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Product
         fields = [
-            "id", "name", "mrp", "price", "discount", "sizes",
-            "description", "delivery_days", "category", "fabric",
+            "id", "shop", "name", "mrp", "price", "discount", "sizes",
+            "description", "delivery_days", "category", "fabric", "specifications",
             "img_class", "images", "tag", "stock", "sold", "rating",
-            "show_on_home", "is_new", "is_bestseller", "color_hex",
+            "show_on_home", "is_new", "is_bestseller", "is_featured", "color_hex",
             "offer_from", "offer_to", "created_at", "updated_at",
         ]
-        read_only_fields = ["id", "discount", "sold", "created_at", "updated_at"]
+        read_only_fields = ["id", "shop", "discount", "sold", "created_at", "updated_at"]
 
 
 # ── Order Items ────────────────────────────────────────────────────────
 class OrderItemSerializer(serializers.ModelSerializer):
     class Meta:
         model  = OrderItem
-        fields = ["id", "name", "qty", "size", "price"]
+        fields = ["id", "shop", "name", "qty", "size", "price"]
 
 
 # ── Order ──────────────────────────────────────────────────────────────
@@ -113,3 +113,71 @@ class UserProfileSerializer(serializers.ModelSerializer):
     def get_name(self, obj):
         full = f"{obj.first_name} {obj.last_name}".strip()
         return full or obj.email
+
+
+# ── Shop ───────────────────────────────────────────────────────────────
+class ShopSerializer(serializers.ModelSerializer):
+    products = ProductSerializer(many=True, read_only=True)
+    class Meta:
+        model = Shop
+        fields = [
+            "id", "name", "slug", "description", "tagline", "logo", "banner", 
+            "hero_heading", "categories_heading",
+            "business_details", "custom_categories", "bg_color", 
+            "footer_address", "footer_phone", "footer_email", 
+            "is_approved", "products"
+        ]
+
+
+class ShopRegisterSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=150)
+    email = serializers.EmailField()
+    phone = serializers.CharField(max_length=20, required=False, default="")
+    password = serializers.CharField(write_only=True, min_length=8)
+    shop_name = serializers.CharField(max_length=255)
+    description = serializers.CharField(required=False, allow_blank=True)
+    business_details = serializers.CharField(required=False, allow_blank=True)
+
+    def validate_email(self, value):
+        if User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError("An account with this email already exists.")
+        return value.lower()
+
+    def create(self, validated_data):
+        from django.utils.text import slugify
+        name_parts = validated_data["name"].strip().split(" ", 1)
+        first_name = name_parts[0]
+        last_name = name_parts[1] if len(name_parts) > 1 else ""
+        
+        user = User.objects.create_user(
+            username=validated_data["email"].lower(),
+            email=validated_data["email"].lower(),
+            password=validated_data["password"],
+            first_name=first_name,
+            last_name=last_name,
+            is_active=False  # Shop owners need admin approval
+        )
+        
+        UserProfile.objects.create(
+            user=user, 
+            phone=validated_data.get("phone", ""),
+            user_type="shop_owner"
+        )
+        
+        # Simple slug generation
+        slug = slugify(validated_data["shop_name"])
+        # Ensure slug is unique
+        base_slug = slug
+        counter = 1
+        while Shop.objects.filter(slug=slug).exists():
+            slug = f"{base_slug}-{counter}"
+            counter += 1
+
+        Shop.objects.create(
+            owner=user,
+            name=validated_data["shop_name"],
+            slug=slug,
+            description=validated_data.get("description", ""),
+            business_details=validated_data.get("business_details", "")
+        )
+        return user

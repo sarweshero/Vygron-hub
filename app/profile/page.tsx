@@ -45,7 +45,7 @@ const STATUS_BADGE: Record<OrderStatus, { bg: string; color: string; label: stri
   cancelled:        { bg: "#fff1f2", color: "#be123c", label: "Cancelled"        },
 };
 
-type TabId = "orders" | "profile" | "wishlist" | "addresses";
+type TabId = "orders" | "profile" | "wishlist" | "addresses" | "shop";
 
 type WishlistItem = {
   id: number;
@@ -80,10 +80,22 @@ export default function ProfilePage() {
   }, [searchParams]);
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [profile, setProfile] = useState({ name: "", email: "", phone: "" });
+  const [profile, setProfile] = useState({ name: "", email: "", phone: "", userType: "customer", shopSlug: "" });
   const [editMode, setEditMode] = useState(false);
+  const [oldPass, setOldPass] = useState("");
+  const [newPass, setNewPass] = useState("");
+  const [passLoading, setPassLoading] = useState(false);
+  const [passError, setPassError] = useState("");
+  const [passSuccess, setPassSuccess] = useState("");
   const [saved, setSaved] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
+  
+  // Shop owner states
+  const [shopStats, setShopStats] = useState<any>(null);
+  const [shopProducts, setShopProducts] = useState<any[]>([]);
+  const [shopSubTab, setShopSubTab] = useState<"overview" | "products" | "orders">("overview");
+  const [isAddingProduct, setIsAddingProduct] = useState(false);
+  const [newProduct, setNewProduct] = useState({ name: "", price: "", mrp: "", stock: "", category: "Casual Wear", description: "", fabric: "" });
   const [wishlistItems, setWishlistItems] = useState<WishlistItem[]>([]);
 
   /* ── Load wishlist from localStorage ── */
@@ -104,35 +116,24 @@ export default function ProfilePage() {
   useEffect(() => {
     const cached = getCachedUserInfo();
     if (cached) {
-      setProfile({ name: cached.name, email: cached.email, phone: cached.phone });
+      if (cached.userType === "shop_owner") {
+        window.location.href = "/dashboard/shop";
+        return;
+      } else {
+        window.location.href = "/dashboard/customer";
+        return;
+      }
     }
-    // Try live fetch
+    // ... remaining logic if not cached ...
     getUserProfile()
-      .then((u) => setProfile({ name: u.name, email: u.email, phone: u.phone }))
+      .then((u) => {
+        if (u.userType === "shop_owner") window.location.href = "/dashboard/shop";
+        else window.location.href = "/dashboard/customer";
+      })
       .catch(() => {
-        // If not authenticated at all, redirect to login
         if (!cached) window.location.href = "/login";
       })
       .finally(() => setAuthLoading(false));
-
-    getMyOrders()
-      .then((raw) => {
-        const mapped = raw.map((o) => {
-          const converted = orderFromAPI(o);
-          return {
-            id:           converted.id,
-            date:         converted.date,
-            items:        converted.items.map((i) => ({ ...i, imgClass: "product-img-1" })),
-            total:        converted.total,
-            status:       converted.status as OrderStatus,
-            payMethod:    converted.payMethod,
-            address:      (o.city as string) || "",
-            customerName: converted.customer,
-          } as Order;
-        });
-        setOrders(mapped);
-      })
-      .catch(() => {/* orders failed – leave empty */});
   }, []);
 
   /* ── Addresses (stored locally) ── */
@@ -273,11 +274,14 @@ export default function ProfilePage() {
     { id: "wishlist",  label: "Wishlist",       icon: "❤️" },
     { id: "addresses", label: "Addresses",     icon: "📍" },
   ];
+  if (profile.userType === "shop_owner") {
+    TABS.push({ id: "shop", label: "My Shop", icon: "🏪" });
+  }
 
   const saveProfile = async () => {
     try {
       const updated = await updateUserProfile({ name: profile.name, phone: profile.phone });
-      setProfile({ name: updated.name, email: updated.email, phone: updated.phone });
+      setProfile({ name: updated.name, email: updated.email, phone: updated.phone, userType: updated.userType, shopSlug: updated.shopSlug || "" });
     } catch { /* ignore network errors */ }
     setEditMode(false);
     setSaved(true);
@@ -369,7 +373,7 @@ export default function ProfilePage() {
                       <div className="text-5xl mb-4">📦</div>
                       <p className="font-semibold text-lg" style={{ fontFamily: "var(--font-cormorant, serif)", color: "var(--primary)" }}>No orders yet</p>
                       <p className="text-sm mt-1" style={{ color: "#888" }}>Your orders will appear here after checkout.</p>
-                      <Link href="/products">
+                      <Link href="/">
                         <button className="btn-primary mt-5 px-7 py-3 rounded-full text-sm font-semibold tracking-wide uppercase" style={{ cursor: "pointer" }}>Shop Now</button>
                       </Link>
                     </div>
@@ -607,9 +611,9 @@ export default function ProfilePage() {
                     <div className="text-5xl mb-4">❤️</div>
                     <p className="font-semibold text-lg" style={{ fontFamily: "var(--font-cormorant, serif)", color: "var(--primary)" }}>Your wishlist is empty</p>
                     <p className="text-sm mt-1" style={{ color: "#888" }}>Heart a product to save it here.</p>
-                    <a href="/products">
+                    <Link href="/">
                       <button className="btn-primary mt-5 px-7 py-3 rounded-full text-sm font-semibold tracking-wide uppercase" style={{ cursor: "pointer" }}>Browse Products</button>
-                    </a>
+                    </Link>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
@@ -648,9 +652,9 @@ export default function ProfilePage() {
                                 <span className="text-xs line-through" style={{ color: "#aaa" }}>₹{item.original.toLocaleString("en-IN")}</span>
                               )}
                             </div>
-                            <a href="/products">
+                            <Link href="/">
                               <button className="btn-primary px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide" style={{ cursor: "pointer" }}>Shop Now</button>
-                            </a>
+                            </Link>
                           </div>
                         </div>
                       </div>
@@ -739,6 +743,54 @@ export default function ProfilePage() {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* ── SHOP TAB ── */}
+            {activeTab === "shop" && (
+              <div>
+                <h2 className="font-bold mb-6" style={{ fontFamily: "var(--font-cormorant, serif)", fontSize: "1.6rem", color: "var(--primary)" }}>Manage Shop</h2>
+                <div className="rounded-2xl p-6 sm:p-8" style={{ background: "#fff", border: "1px solid var(--cream-dark)", boxShadow: "0 2px 16px rgba(0,0,0,0.04)" }}>
+                  <p className="text-sm text-gray-500 mb-6 italic">Shop management dashboard. Here you can see how your shop appears to customers.</p>
+                  <Link href={`/${profile.shopSlug}`} target="_blank">
+                    <button className="btn-primary px-6 py-3 rounded-xl text-sm font-semibold mb-8" style={{ cursor: "pointer" }}>View Public Shop Page</button>
+                  </Link>
+                  <div className="p-8 rounded-3xl border-2 border-dashed border-gray-200 text-center">
+                    <span className="text-4xl mb-4 block">🛠️</span>
+                    <h3 className="font-bold text-gray-400">Advanced Shop Dashboard Coming Soon</h3>
+                    <p className="text-xs text-gray-400 mt-1">Soon you will be able to add products, track sales, and customize your theme.</p>
+                  </div>
+
+                  {/* Password Change Section */}
+                  <div className="mt-8 pt-8 border-t border-cream-dark">
+                    <h3 className="font-bold mb-4" style={{ fontFamily: "var(--font-cormorant, serif)", fontSize: "1.2rem", color: "var(--primary)" }}>Security</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
+                      <ProfileField label="Current Password" type="password" value={oldPass} onChange={setOldPass} placeholder="••••••••" />
+                      <ProfileField label="New Password" type="password" value={newPass} onChange={setNewPass} placeholder="••••••••" />
+                    </div>
+                    {passError && <p className="text-xs text-red-500 mt-2">{passError}</p>}
+                    {passSuccess && <p className="text-xs text-green-600 mt-2">{passSuccess}</p>}
+                    <button 
+                      onClick={async () => {
+                        if (!oldPass || !newPass) { setPassError("Both fields are required."); return; }
+                        setPassLoading(true); setPassError(""); setPassSuccess("");
+                        try {
+                          const { changePassword } = await import("@/lib/api");
+                          await changePassword(oldPass, newPass);
+                          setPassSuccess("Password updated successfully!");
+                          setOldPass(""); setNewPass("");
+                        } catch (err: any) {
+                          setPassError(err.message.includes("400") ? "Incorrect current password." : "Something went wrong.");
+                        } finally { setPassLoading(false); }
+                      }}
+                      disabled={passLoading}
+                      className="btn-primary px-6 py-2 rounded-xl text-xs font-semibold mt-4"
+                      style={{ cursor: passLoading ? "wait" : "pointer" }}
+                    >
+                      {passLoading ? "Updating..." : "Update Password"}
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 

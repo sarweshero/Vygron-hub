@@ -15,10 +15,10 @@ const jost = Jost({
 });
 
 export const metadata: Metadata = {
-  title: "Kurthī Couture — Timeless Indian Ethnic Wear",
+  title: "Vygron Hub — The Global Collective of Elite Boutiques",
   description:
-    "Discover our exclusive collection of handcrafted Kurthi dresses. Premium fabrics, artisan embroidery, and timeless silhouettes for the modern woman.",
-  keywords: "kurthi, kurti, ethnic wear, indian fashion, kurta, women fashion",
+    "Explore the world's most exclusive curated essentials. Vygron Hub brings together premium boutiques and elite brands under one refined destination.",
+  keywords: "VYGRON, marketplace, luxury retail, boutiques, curated fashion, premium essentials",
 };
 
 export default function RootLayout({

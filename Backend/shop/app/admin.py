@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Product, Order, OrderItem
+from .models import Product, Order, OrderItem, Shop, UserProfile
 
 
 @admin.register(Product)
@@ -24,3 +24,27 @@ class OrderAdmin(admin.ModelAdmin):
     search_fields = ("id", "customer", "email", "phone")
     inlines       = [OrderItemInline]
     ordering      = ("-date",)
+
+
+@admin.register(Shop)
+class ShopAdmin(admin.ModelAdmin):
+    list_display = ("name", "owner", "slug", "is_approved", "created_at")
+    list_filter = ("is_approved",)
+    search_fields = ("name", "owner__email", "slug")
+    actions = ["approve_shops"]
+
+    def approve_shops(self, request, queryset):
+        for shop in queryset:
+            shop.is_approved = True
+            shop.save()
+            # Also activate the owner's user account
+            shop.owner.is_active = True
+            shop.owner.save()
+        self.message_user(request, f"{queryset.count()} shops approved.")
+    approve_shops.short_description = "Approve selected shops and activate owners"
+
+
+@admin.register(UserProfile)
+class UserProfileAdmin(admin.ModelAdmin):
+    list_display = ("user", "phone", "user_type")
+    list_filter = ("user_type",)

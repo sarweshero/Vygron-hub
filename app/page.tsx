@@ -1,962 +1,479 @@
 "use client";
-// page.tsx – Kurthī Couture | Premium Ethnic Wear Home Page
+// page.tsx – Vygron Hub | Inspired by the TrendHub UI
 
-import { useState, useEffect, useMemo, useRef } from "react";
-import Navbar from "@/app/components/Navbar";
+import { useState, useEffect, useMemo } from "react";
+import { getAllShops, BASE } from "@/lib/api";
+import Link from "next/link";
 import Footer from "@/app/components/Footer";
-import ImageSlider from "@/app/components/ImageSlider";
-import { BASE, getUserToken } from "@/lib/api";
-
-/* ─── Data ──────────────────────────────────────────────── */
-
-
-const CATEGORIES = [
-  { label: "Casual Wear",  icon: "🌸", bg: "#f5ede3", border: "#c97d4a" },
-  { label: "Festive",      icon: "✨", bg: "#f9e9f0", border: "#7b1e3a" },
-  { label: "Embroidered",  icon: "🪡", bg: "#fdf3ea", border: "#c97d4a" },
-  { label: "Block Print",  icon: "🎨", bg: "#f5ede3", border: "#7b1e3a" },
-  { label: "Silk & Satin", icon: "💎", bg: "#f9e9f0", border: "#c97d4a" },
-  { label: "Designer",     icon: "👑", bg: "#fdf3ea", border: "#7b1e3a" },
-];
-
-type HomeProduct = {
-  id: number;
-  name: string;
-  price: string;
-  original: string;
-  tag: string;
-  imgClass: string;
-  images?: string[];
-  rating: number;
-  reviews: number;
-  outOfStock: boolean;
-};
-
-type DetailProduct = HomeProduct & {
-  description: string;
-  fabric: string;
-  category: string;
-  deliveryDays: number;
-  sizes: string[];
-  colorHex: string;
-  discount: number;
-};
-
-function toHomeProduct(p: {
-  id:number; name:string; mrp:number; price:number; tag?:string;
-  imgClass:string; images?:string[]; rating:number; sold:number; stock:number;
-}): HomeProduct {
-  const fmt = (n:number) => "\u20b9" + n.toLocaleString("en-IN");
-  return {
-    id: p.id,
-    name: p.name,
-    price: fmt(p.price),
-    original: p.mrp !== p.price ? fmt(p.mrp) : "",
-    tag: p.tag ?? "",
-    imgClass: p.imgClass,
-    images: p.images ?? [],
-    rating: p.rating || 4.5,
-    reviews: p.sold || 0,
-    outOfStock: p.stock === 0,
-  };
-}
-
-const FALLBACK_IMG: Record<string, string> = {
-  "product-img-1": "https://images.unsplash.com/photo-1610030469983-98e550d6193c?auto=format&fit=crop&w=600&q=80",
-  "product-img-2": "https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?auto=format&fit=crop&w=600&q=80",
-  "product-img-3": "https://images.unsplash.com/photo-1529260830199-42c24126f198?auto=format&fit=crop&w=600&q=80",
-  "product-img-4": "https://images.unsplash.com/photo-1614786269829-d24616faf56d?auto=format&fit=crop&w=600&q=80",
-  "product-img-5": "https://images.unsplash.com/photo-1573740144655-bfa6156ad484?auto=format&fit=crop&w=600&q=80",
-  "product-img-6": "https://images.unsplash.com/photo-1617450365226-9bf28c04e130?auto=format&fit=crop&w=600&q=80",
-};
-
-const FALLBACK_ARRIVALS: HomeProduct[] = [
-  { id: 1, name: "Gulabi Anarkali Suit",      price: "₹3,499", original: "₹4,999", tag: "New",  imgClass: "product-img-1", images: [FALLBACK_IMG["product-img-1"]], rating: 4.9, reviews: 284, outOfStock: false },
-  { id: 2, name: "Zari Weave Straight Kurta", price: "₹2,799", original: "₹3,999", tag: "Hot",  imgClass: "product-img-2", images: [FALLBACK_IMG["product-img-2"]], rating: 4.8, reviews: 174, outOfStock: false },
-  { id: 3, name: "Chikankari Lucknowi Kurta", price: "₹2,299", original: "₹3,299", tag: "Sale", imgClass: "product-img-3", images: [FALLBACK_IMG["product-img-3"]], rating: 4.7, reviews: 432, outOfStock: false },
-  { id: 7, name: "Organza Silk Flared Kurta", price: "₹5,499", original: "₹6,999", tag: "New",  imgClass: "product-img-1", images: [FALLBACK_IMG["product-img-1"]], rating: 4.9, reviews: 62,  outOfStock: false },
-];
-
-const FEATURED = [
-  { id: 1, title: "Festive Edition 2026",  sub: "Step into celebrations with grace",   imgClass: "product-img-2", big: true  },
-  { id: 2, title: "Casual Everyday",       sub: "Effortless comfort, timeless style",  imgClass: "product-img-5", big: false },
-  { id: 3, title: "Embroidered Luxe",      sub: "Handcrafted artisan masterpieces",    imgClass: "product-img-6", big: false },
-];
-
-const TESTIMONIALS = [
-  { name: "Priya M.",  location: "Mumbai",    text: "The quality is absolutely stunning. Every stitch feels like it was made with love. My go-to brand for every occasion!", stars: 5 },
-  { name: "Ananya K.", location: "Bangalore", text: "I wore the Gulabi Anarkali to my cousin's wedding and received so many compliments. Premium quality at a great price.", stars: 5 },
-  { name: "Deepa R.",  location: "Chennai",   text: "Fast shipping, beautiful packaging, and the fabric is so luxurious. Kurthī Couture never disappoints!",                stars: 5 },
-];
-
-const FEATURES = [
-  { icon: "🚚", title: "Free Shipping",   desc: "On all orders above ₹1,499" },
-  { icon: "↩",  title: "Easy Returns",    desc: "Hassle-free 30-day returns"  },
-  { icon: "🪡", title: "Premium Fabrics", desc: "Sourced from master weavers"  },
-  { icon: "💳", title: "Secure Payments", desc: "100% encrypted checkout"      },
-];
-
-/* ─── Component ─────────────────────────────────────────── */
+import { 
+  Search, Bell, Heart, ShoppingCart, ChevronRight, 
+  ArrowRight, Globe, ShoppingBag, X, Plus, Minus, CheckCircle2, User,
+  LogOut, Settings, LayoutDashboard, Package
+} from "lucide-react";
+import { getCachedUserInfo, clearUserToken } from "@/lib/api";
+import { useRef } from "react";
 
 export default function Home() {
-  const [email, setEmail]           = useState("");
-  const [subscribed, setSubscribed] = useState(false);
-  const [wishlist, setWishlist]     = useState<number[]>([]);
-  const [cartCount, setCartCount]   = useState(0);
-  const [homeProducts, setHomeProducts] = useState<HomeProduct[]>(FALLBACK_ARRIVALS);
-  const [selectedProduct, setSelectedProduct] = useState<DetailProduct | null>(null);
-  const [selectedSize, setSelectedSize] = useState("");  const [sizeError, setSizeError]             = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rawProductsRef = useRef<Record<string, any>[]>([]);
-  const [authPrompt, setAuthPrompt]           = useState(false);
-  const [searchQuery, setSearchQuery]         = useState("");
-  const [activeTag, setActiveTag]             = useState("All");
-  const [wishlistToast, setWishlistToast]     = useState<{ show: boolean; added: boolean }>({ show: false, added: false });
-
-  /* ── Hydrate wishlist IDs from localStorage ── */
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem("kurthi_wishlist");
-      if (stored) {
-        const items: { id: number }[] = JSON.parse(stored);
-        setWishlist(items.map(i => i.id));
-      }
-    } catch {}
-  }, []);
+  const [shops, setShops] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeCategory, setActiveCategory] = useState("All");
+  const [selectedProduct, setSelectedProduct] = useState<any>(null);
+  const [activeImage, setActiveImage] = useState("");
+  const [cart, setCart] = useState<any[]>([]);
+  const [userName, setUserName] = useState<string>("");
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const loadHomeProducts = async () => {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const data: Record<string, any>[] = await fetch(`${BASE}/products/home/`).then(r => r.json());
-        rawProductsRef.current = data;
-        const mapped = data.map(p => toHomeProduct({
-          id: p.id, name: p.name, mrp: parseFloat(p.mrp), price: parseFloat(p.price),
-          tag: p.tag || undefined, imgClass: p.img_class, images: (p.images as string[]) ?? [], rating: p.rating, sold: p.sold, stock: p.stock,
-        }));
-        if (mapped.length > 0) setHomeProducts(mapped);
-      } catch {
-        /* keep FALLBACK_ARRIVALS */
+    const handleClickOutside = (e: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setShowUserMenu(false);
       }
     };
-    loadHomeProducts();
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const toggleWishlist = (id: number) => {
-    const product = homeProducts.find(p => p.id === id);
-    try {
-      const stored: { id: number; name: string; price: number; original?: number; imgClass: string; images?: string[]; tag?: string }[] =
-        JSON.parse(localStorage.getItem("kurthi_wishlist") || "[]");
-      const isIn = stored.some(i => i.id === id);
-      let updated: typeof stored;
-      if (isIn) {
-        updated = stored.filter(i => i.id !== id);
-      } else if (product) {
-        const priceNum = parseInt(String(product.price).replace(/[^\d]/g, ""), 10);
-        const origNum  = product.original ? parseInt(String(product.original).replace(/[^\d]/g, ""), 10) : undefined;
-        updated = [...stored, { id, name: product.name, price: priceNum, original: origNum, imgClass: product.imgClass, images: product.images, tag: product.tag }];
-      } else {
-        updated = stored;
-      }
-      localStorage.setItem("kurthi_wishlist", JSON.stringify(updated));
-      setWishlist(updated.map(i => i.id));
-      setWishlistToast({ show: true, added: !isIn });
-      setTimeout(() => setWishlistToast(t => ({ ...t, show: false })), 2000);
-    } catch {
-      setWishlist(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  const handleLogout = () => {
+    clearUserToken();
+    window.location.reload();
+  };
+
+  useEffect(() => {
+    // Load global cart
+    const saved = localStorage.getItem("vygron_cart");
+    if (saved) setCart(JSON.parse(saved));
+    
+    // Check for user
+    const info = getCachedUserInfo();
+    if (info) setUserName(info.name?.split(" ")[0] || "Profile");
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("vygron_cart", JSON.stringify(cart));
+  }, [cart]);
+
+  const addToCart = (product: any) => {
+    const existing = cart.find(item => item.id === product.id);
+    const itemToAdd = {
+      ...product,
+      qty: 1,
+      shop_slug: product.shop_slug || "vygron-hub",
+      shop_name: product.shop_name || "Vygron Premium"
+    };
+
+    if (existing) {
+      setCart(cart.map(item => item.id === product.id ? { ...item, qty: item.qty + 1 } : item));
+    } else {
+      setCart([...cart, itemToAdd]);
     }
+    alert(`Added to your Vygron Hub cart via ${itemToAdd.shop_name}! ✨`);
   };
 
-  const openProduct = (hp: HomeProduct) => {
-    setSelectedSize("");
-    try {
-      const full = rawProductsRef.current.find(p => p.id === hp.id);
-      if (full) {
-        setSelectedProduct({
-          ...hp,
-          description: full.description ?? "",
-          fabric: full.fabric ?? "",
-          category: full.category ?? "",
-          deliveryDays: full.delivery_days ?? 5,
-          sizes: full.sizes ?? [],
-          colorHex: full.color_hex ?? "#7b1e3a",
-          discount: full.mrp > full.price ? Math.round(((parseFloat(full.mrp) - parseFloat(full.price)) / parseFloat(full.mrp)) * 100) : 0,
-        });
-        return;
+  useEffect(() => {
+    const loadMarketplace = async () => {
+      try {
+        const [shopsData, productsData] = await Promise.all([
+          getAllShops(),
+          fetch(`${BASE}/products/`).then(r => r.json())
+        ]);
+        setShops(shopsData);
+        setProducts(productsData.results || productsData);
+      } catch (err) {
+        console.error("Failed to load marketplace data", err);
+      } finally {
+        setLoading(false);
       }
-    } catch { /* ignore */ }
-    setSelectedProduct({ ...hp, description: "", fabric: "", category: "", deliveryDays: 5, sizes: [], colorHex: "#7b1e3a", discount: 0 });
-  };
-
-  const closeProduct = () => { setSelectedProduct(null); setSelectedSize(""); };
-
-  const addToCart = (product: DetailProduct, size: string) => {
-    /* auth check */
-    try { if (!getUserToken()) { setAuthPrompt(true); return; } } catch {}
-    /* size check */
-    if (product.sizes && product.sizes.length > 0 && !size) { setSizeError(true); return; }
-    setSizeError(false);
-    const priceNum    = parseInt(product.price.replace(/[^\d]/g, ""), 10);
-    const originalNum = product.original ? parseInt(product.original.replace(/[^\d]/g, ""), 10) : undefined;
-    const newItem = {
-      id: product.id, name: product.name,
-      price: priceNum, original: originalNum,
-      imgClass: product.imgClass,
-      images: product.images ?? [],
-      size: size || "Free Size",
-      color: product.colorHex, colorHex: product.colorHex,
-      qty: 1, fabric: product.fabric || "",
     };
-    try {
-      const existing: typeof newItem[] = JSON.parse(localStorage.getItem("kurthi_cart") || "[]");
-      const idx = existing.findIndex(i => i.id === newItem.id && i.size === newItem.size);
-      if (idx >= 0) existing[idx].qty += 1; else existing.push(newItem);
-      localStorage.setItem("kurthi_cart", JSON.stringify(existing));
-    } catch {}
-    setCartCount(c => c + 1);
-  };
+    loadMarketplace();
+  }, []);
 
-  const filteredArrivals = useMemo(() =>
-    homeProducts.filter((p) => {
-      if (activeTag !== "All" && p.tag !== activeTag) return false;
-      if (searchQuery && !p.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-      return true;
-    }),
-  [homeProducts, searchQuery, activeTag]);
+  useEffect(() => {
+    if (selectedProduct && selectedProduct.images?.length > 0) {
+      setActiveImage(selectedProduct.images[0]);
+    }
+  }, [selectedProduct]);
 
-  const handleSubscribe = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (email) setSubscribed(true);
-  };
+  const filteredProducts = useMemo(() => {
+    if (activeCategory === "All") return products;
+    return products.filter(p => p.category === activeCategory);
+  }, [products, activeCategory]);
+
+  if (loading) {
+     return (
+        <div className="min-h-screen flex items-center justify-center bg-white">
+           <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+     );
+  }
 
   return (
-    <div className="min-h-screen" style={{ background: "var(--background)" }}>
+    <div className="min-h-screen bg-white text-[#333] font-sans selection:bg-blue-500 selection:text-white">
+      
+      {/* ── NAVBAR 85% ── */}
+      <nav className="w-[85%] mx-auto py-6 flex items-center justify-between">
+         <div className="flex items-center gap-12 flex-1">
+            <Link href="/" className="text-2xl font-black tracking-tighter text-[#1A1A1A]">
+               vygron<span className="text-blue-600">hub</span>
+            </Link>
+            
+            <div className="flex-1 max-w-xl relative">
+               <input 
+                  type="text" 
+                  placeholder="Search product in Vygronhub" 
+                  className="w-full bg-gray-50 border border-gray-100 rounded-full py-3 px-6 pl-12 text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+               />
+               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+               <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-300">|</div>
+            </div>
+         </div>
 
-      {/* ── ANNOUNCEMENT BAR ── */}
-      <div
-        className="text-center text-sm py-2 tracking-widest font-medium"
-        style={{ background: "var(--primary)", color: "#fff", fontFamily: "var(--font-jost, sans-serif)" }}
-      >
-        ✦ FREE SHIPPING ON ORDERS ABOVE ₹1,499&nbsp;&nbsp;|&nbsp;&nbsp;USE CODE{" "}
-        <span style={{ color: "var(--accent-light)" }}>KURTHI20</span>{" "}FOR 20% OFF ✦
+         <div className="flex items-center gap-8">
+            <div className="hidden md:flex items-center gap-6 text-sm font-medium text-gray-500">
+               <Link href="#" className="hover:text-blue-600">About</Link>
+               <Link href="#" className="hover:text-blue-600">Help</Link>
+               <Link href="#" className="hover:text-blue-600">Contact</Link>
+            </div>
+            <div className="flex items-center gap-4">
+               <button className="p-2 text-gray-400 hover:text-blue-600 transition-colors relative">
+                  <Bell size={20} />
+                  <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
+               </button>
+               <Link href="/cart" className="p-2 text-gray-400 hover:text-blue-600 transition-colors relative block">
+                  <ShoppingCart size={20} />
+                  {cart.length > 0 && (
+                     <span className="absolute -top-1 -right-1 w-4 h-4 bg-blue-600 text-white text-[8px] font-black flex items-center justify-center rounded-full border-2 border-white">
+                        {cart.reduce((sum, item) => sum + item.qty, 0)}
+                     </span>
+                  )}
+               </Link>
+               {userName ? (
+                  <div className="relative" ref={userMenuRef}>
+                    <button 
+                      onClick={() => setShowUserMenu(!showUserMenu)}
+                      className="bg-blue-600 text-white px-8 py-2.5 rounded-full text-sm font-bold shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-all flex items-center gap-2 cursor-pointer"
+                    >
+                       <User size={16} />
+                       {userName}
+                    </button>
+                    
+                    {showUserMenu && (
+                      <div className="absolute right-0 mt-3 w-64 bg-white rounded-3xl shadow-2xl border border-gray-100 py-4 z-[200] animate-in fade-in slide-in-from-top-2 duration-300">
+                        <div className="px-6 py-4 border-b border-gray-50 mb-2">
+                           <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Account Hub</p>
+                           <p className="text-sm font-bold text-[#1A1A1A] truncate">{userName}</p>
+                        </div>
+                        
+                        <div className="flex flex-col">
+                           <Link href="/dashboard/customer" className="flex items-center gap-3 px-6 py-3 text-sm font-bold text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-colors">
+                              <LayoutDashboard size={16} /> Dashboard
+                           </Link>
+                           <Link href="/dashboard/customer?tab=orders" className="flex items-center gap-3 px-6 py-3 text-sm font-bold text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-colors">
+                              <Package size={16} /> My Orders
+                           </Link>
+                           <Link href="/dashboard/customer?tab=wishlist" className="flex items-center gap-3 px-6 py-3 text-sm font-bold text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-colors">
+                              <Heart size={16} /> Wishlist
+                           </Link>
+                           <Link href="/dashboard/customer?tab=profile" className="flex items-center gap-3 px-6 py-3 text-sm font-bold text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-colors">
+                              <Settings size={16} /> Settings
+                           </Link>
+                           
+                           <div className="h-[1px] bg-gray-50 my-2" />
+                           
+                           <button 
+                             onClick={handleLogout}
+                             className="flex items-center gap-3 px-6 py-3 text-sm font-bold text-red-500 hover:bg-red-50 transition-colors w-full text-left"
+                           >
+                              <LogOut size={16} /> Sign Out
+                           </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <Link href="/login" className="bg-blue-600 text-white px-8 py-2.5 rounded-full text-sm font-bold shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-all">
+                     Login
+                  </Link>
+                )}
+            </div>
+         </div>
+      </nav>
+
+      {/* ── CATEGORY SUBNAV 85% ── */}
+      <div className="w-[85%] mx-auto py-4 border-t border-gray-100 flex items-center justify-between overflow-x-auto no-scrollbar whitespace-nowrap">
+         <div className="flex items-center gap-4">
+            <button className="px-6 py-2 bg-gray-100 rounded-full text-xs font-bold text-gray-600 border border-gray-200">All Categories</button>
+            <button className="px-6 py-2 bg-blue-600 rounded-full text-xs font-bold text-white shadow-md">All Discount</button>
+         </div>
+         <div className="flex items-center gap-8 ml-12 text-sm font-bold text-gray-400">
+            {["Electronics", "Fashion", "Grocery", "Sports", "School Supplies", "Toys", "Book"].map((cat) => (
+               <button key={cat} onClick={() => setActiveCategory(cat)} className={`hover:text-blue-600 transition-colors ${activeCategory === cat ? 'text-blue-600' : ''}`}>
+                  {cat}
+               </button>
+            ))}
+         </div>
       </div>
 
-      <Navbar wishlistCount={wishlist.length} cartCount={cartCount} />
-
-      {/* ── HERO ── */}
-      <section className="relative flex items-center overflow-hidden" style={{ minHeight: "92vh" }}>
-        <div
-          className="absolute inset-0"
-          style={{ background: "linear-gradient(135deg, #5c1629 0%, #7b1e3a 35%, #a3264d 55%, #c97d4a 80%, #e8c5a0 100%)" }}
-        />
-        <div
-          className="absolute inset-0 opacity-10"
-          style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-          }}
-        />
-        <div className="absolute inset-0 hero-overlay" />
-        <div
-          className="absolute right-0 bottom-0 opacity-20 animate-float"
-          style={{
-            width: "500px", height: "500px", borderRadius: "50%",
-            background: "radial-gradient(circle, rgba(201,125,74,0.6) 0%, transparent 70%)",
-            transform: "translate(30%, 30%)",
-          }}
-        />
-        <div className="relative max-w-7xl mx-auto px-6 sm:px-12 w-full py-24">
-          <div className="max-w-2xl">
-            <p className="mb-4 tracking-[0.4em] uppercase text-sm animate-fadeIn" style={{ color: "var(--accent-light)", fontFamily: "var(--font-jost, sans-serif)" }}>
-              ✦ New Collection 2026
-            </p>
-            <h1
-              className="font-bold leading-tight mb-6 animate-fadeInUp"
-              style={{ fontFamily: "var(--font-cormorant, serif)", fontSize: "clamp(3rem, 7vw, 6rem)", color: "#fff", lineHeight: 1.05 }}
-            >
-              Draped in<br />
-              <em style={{ fontStyle: "italic", color: "var(--accent-light)" }}>Tradition</em>,<br />
-              Crafted for<br />
-              <span style={{ color: "var(--cream)" }}>Today.</span>
+      {/* ── HERO SECTION 85% ── */}
+      <div className="w-[85%] mx-auto mt-6 bg-[#EDEFF1] rounded-[3rem] overflow-hidden relative min-h-[500px] flex items-center px-16">
+         <div className="flex-1 space-y-8 py-20 relative z-10">
+            <h1 className="text-6xl font-black text-[#1A1A1A] leading-[1.1] max-w-xl">
+               Your <span className="text-blue-600">One-Stop</span> Shop for Everything You Need!
             </h1>
-            <p
-              className="mb-10 leading-relaxed animate-fadeInUp delay-200"
-              style={{ color: "rgba(255,255,255,0.82)", maxWidth: "480px", fontFamily: "var(--font-jost, sans-serif)", fontSize: "1.1rem" }}
-            >
-              Discover our exclusive handcrafted Kurthi collection — where centuries-old artisanship meets contemporary silhouettes.
+            <p className="text-gray-500 max-w-sm leading-relaxed text-sm">
+               Fast shipping, friendly customer service, and secure transactions guaranteed!
             </p>
-            <div className="flex flex-wrap gap-4 animate-fadeInUp delay-300">
-              <a
-                href="#collections"
-                className="btn-primary inline-flex items-center gap-2 px-8 py-4 rounded-full font-semibold tracking-wider text-sm uppercase"
-                style={{ fontFamily: "var(--font-jost, sans-serif)", textDecoration: "none" }}
-              >
-                Shop the Collection
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M5 12h14M12 5l7 7-7 7"/>
-                </svg>
-              </a>
-              <a
-                href="#arrivals"
-                className="inline-flex items-center gap-2 px-8 py-4 rounded-full font-semibold tracking-wider text-sm uppercase transition-all hover:scale-105"
-                style={{
-                  border: "2px solid rgba(255,255,255,0.6)", color: "#fff",
-                  textDecoration: "none", fontFamily: "var(--font-jost, sans-serif)",
-                }}
-              >
-                New Arrivals
-              </a>
+            
+            <div className="flex gap-4 pt-4">
+               {/* Mini Promo Card 1 */}
+               <div className="bg-[#FFEB3B] p-6 rounded-[2rem] w-44 space-y-4 shadow-xl shadow-yellow-500/10">
+                  <h3 className="font-black text-sm text-[#1A1A1A]">Back to School</h3>
+                  <p className="text-[10px] text-gray-600 leading-tight">Grab your school supplies at unbeatable prices!</p>
+                  <button className="w-full py-2 bg-blue-600 text-white text-[9px] font-black uppercase tracking-wider rounded-lg">Claim discount</button>
+               </div>
+               
+               {/* Mini Promo Card 2 */}
+               <div className="bg-white p-6 rounded-[2rem] w-44 space-y-4 shadow-xl">
+                  <span className="inline-block px-2 py-1 bg-yellow-400 text-[10px] font-black rounded-md">20% OFF</span>
+                  <h3 className="font-black text-xs text-[#1A1A1A]">For All Cosmetic Product</h3>
+                  <button className="w-full py-2 bg-blue-600 text-white text-[9px] font-black uppercase tracking-wider rounded-lg">Claim discount</button>
+               </div>
             </div>
-            <div className="flex gap-10 mt-14 animate-fadeInUp delay-400">
-              {[["500+", "Designs"], ["50K+", "Customers"], ["4.9★", "Rating"]].map(([num, label]) => (
-                <div key={label}>
-                  <div className="text-2xl font-bold" style={{ color: "#fff", fontFamily: "var(--font-cormorant, serif)" }}>{num}</div>
-                  <div className="text-xs tracking-widest uppercase" style={{ color: "rgba(255,255,255,0.6)", fontFamily: "var(--font-jost, sans-serif)" }}>{label}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 animate-float">
-          <span className="text-xs tracking-widest uppercase" style={{ color: "rgba(255,255,255,0.5)", fontFamily: "var(--font-jost, sans-serif)" }}>Scroll</span>
-          <div className="w-[1px] h-10" style={{ background: "linear-gradient(to bottom, rgba(255,255,255,0.5), transparent)" }} />
-        </div>
-      </section>
+         </div>
 
-      {/* ── FEATURES STRIP ── */}
-      <section style={{ background: "var(--cream)", borderTop: "1px solid var(--cream-dark)", borderBottom: "1px solid var(--cream-dark)" }}>
-        <div className="max-w-7xl mx-auto px-6 py-8">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-            {FEATURES.map((f) => (
-              <div key={f.title} className="flex items-center gap-4">
-                <span className="text-2xl">{f.icon}</span>
-                <div>
-                  <div className="font-semibold text-sm tracking-wide" style={{ color: "var(--primary)", fontFamily: "var(--font-jost, sans-serif)" }}>{f.title}</div>
-                  <div className="text-xs mt-0.5" style={{ color: "#888", fontFamily: "var(--font-jost, sans-serif)" }}>{f.desc}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+         <div className="absolute right-0 bottom-0 top-0 w-1/2 flex items-end justify-center pointer-events-none">
+            <img 
+               src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?q=80&w=1000&auto=format&fit=crop" 
+               className="h-[110%] object-cover object-center translate-y-10" 
+               alt="Shopping Hero" 
+            />
+         </div>
+      </div>
 
-      {/* ── CATEGORIES ── */}
-      <section className="max-w-7xl mx-auto px-6 sm:px-8 py-20">
-        <div className="text-center mb-12">
-          <p className="text-xs tracking-[0.4em] uppercase mb-3" style={{ color: "var(--accent)", fontFamily: "var(--font-jost, sans-serif)" }}>Browse by Style</p>
-          <h2 className="font-bold" style={{ fontFamily: "var(--font-cormorant, serif)", fontSize: "clamp(2rem, 4vw, 3rem)", color: "var(--primary)" }}>
-            Shop by Category
-          </h2>
-        </div>
-        <div className="grid grid-cols-3 lg:grid-cols-6 gap-4">
-          {CATEGORIES.map((cat) => (
-            <a
-              key={cat.label}
-              href="#"
-              className="card-lift flex flex-col items-center gap-3 rounded-2xl py-6 px-3 text-center group"
-              style={{ background: cat.bg, border: `1.5px solid ${cat.border}30`, textDecoration: "none" }}
-            >
-              <span className="text-3xl group-hover:scale-110 transition-transform duration-200">{cat.icon}</span>
-              <span className="text-xs font-semibold tracking-wide uppercase" style={{ color: "var(--primary)", fontFamily: "var(--font-jost, sans-serif)" }}>{cat.label}</span>
-            </a>
-          ))}
-        </div>
-      </section>
+      {/* ── TRENDING CATEGORIES (NOW SHOPS) 85% ── */}
+      <section className="w-[85%] mx-auto py-24 space-y-12">
+         <div className="flex items-center justify-between">
+            <h2 className="text-4xl font-black text-[#1A1A1A]">Explore Our Elite Boutiques</h2>
+            <Link href="#" className="flex items-center gap-2 text-sm font-bold text-gray-400 hover:text-blue-600 transition-all">
+               View all sellers <ArrowRight size={16} />
+            </Link>
+         </div>
 
-      {/* ── NEW ARRIVALS ── */}
-      <section id="arrivals" className="py-20" style={{ background: "var(--cream)" }}>
-        <div className="max-w-7xl mx-auto px-6 sm:px-8">
-          {/* Header row */}
-          <div className="flex items-end justify-between mb-6 flex-wrap gap-4">
-            <div>
-              <p className="text-xs tracking-[0.4em] uppercase mb-2" style={{ color: "var(--accent)", fontFamily: "var(--font-jost, sans-serif)" }}>Just Landed</p>
-              <h2 className="font-bold" style={{ fontFamily: "var(--font-cormorant, serif)", fontSize: "clamp(2rem, 4vw, 3rem)", color: "var(--primary)" }}>
-                New Arrivals
-              </h2>
-            </div>
-            <a
-              href="/products"
-              className="text-sm font-semibold tracking-widest uppercase flex items-center gap-2 group"
-              style={{ color: "var(--primary)", textDecoration: "none", fontFamily: "var(--font-jost, sans-serif)" }}
-            >
-              View All
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="group-hover:translate-x-1 transition-transform">
-                <path d="M5 12h14M12 5l7 7-7 7"/>
-              </svg>
-            </a>
-          </div>
+         <div className="grid grid-cols-12 gap-8 h-[600px]">
+            {shops.length > 0 ? (
+               <>
+                  {/* Main Shop - Large Slot */}
+                  {shops[0] && (
+                     <Link href={`/${shops[0].slug}`} className="col-span-12 md:col-span-4 bg-[#1A1A1A] rounded-[3rem] p-10 flex flex-col justify-between group overflow-hidden relative shadow-2xl">
+                        <div className="relative z-10">
+                           <span className="px-4 py-2 bg-white/10 text-white text-[10px] font-bold rounded-full backdrop-blur-md">Premier Partner</span>
+                           <h3 className="text-4xl font-black text-white mt-6 leading-tight" style={{ fontFamily: "var(--font-cormorant, serif)" }}>{shops[0].name}</h3>
+                        </div>
+                        <div className="relative z-10">
+                           <button className="bg-blue-600 text-white px-8 py-3 rounded-xl text-xs font-bold shadow-2xl shadow-blue-600/30">Visit Boutique →</button>
+                        </div>
+                        {shops[0].logo ? (
+                           <img src={shops[0].logo} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full object-cover opacity-60 group-hover:scale-110 transition-transform duration-1000" alt={shops[0].name} />
+                        ) : (
+                           <div className="absolute inset-0 bg-gradient-to-br from-blue-900 to-black opacity-60" />
+                        )}
+                        <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-all duration-700" />
+                     </Link>
+                  )}
 
-          {/* ── SEARCH + TAG FILTER ROW ── */}
-          <div className="flex flex-col sm:flex-row gap-4 mb-8 items-start sm:items-center">
-            {/* Search input */}
-            <div className="relative flex-1 max-w-sm">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search new arrivals…"
-                className="w-full pl-10 pr-4 py-3 rounded-full text-sm outline-none"
-                style={{
-                  border: "1.5px solid var(--cream-dark)", background: "#fff",
-                  fontFamily: "var(--font-jost, sans-serif)", color: "var(--foreground)",
-                  transition: "border-color 0.2s, box-shadow 0.2s",
-                }}
-                onFocus={(e) => { e.currentTarget.style.borderColor = "var(--primary)"; e.currentTarget.style.boxShadow = "0 0 0 3px rgba(123,30,58,0.1)"; }}
-                onBlur={(e)  => { e.currentTarget.style.borderColor = "var(--cream-dark)"; e.currentTarget.style.boxShadow = "none"; }}
-              />
-              <svg className="absolute left-3.5 top-1/2 -translate-y-1/2" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#aaa" strokeWidth="2">
-                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-              </svg>
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs"
-                  style={{ background: "none", border: "none", cursor: "pointer", color: "#aaa", lineHeight: 1 }}
-                >✕</button>
-              )}
-            </div>
+                  {/* Middle Section Stack - 2 Shops */}
+                  <div className="col-span-12 md:col-span-5 grid grid-rows-2 gap-8">
+                     {shops[1] && (
+                        <Link href={`/${shops[1].slug}`} className="bg-white border border-gray-100 rounded-[3rem] p-10 flex items-center justify-between shadow-sm hover:shadow-xl transition-all group overflow-hidden relative">
+                           <div className="space-y-6 relative z-10 w-2/3">
+                              <h3 className="text-2xl font-black text-[#1A1A1A] leading-tight" style={{ fontFamily: "var(--font-cormorant, serif)" }}>{shops[1].name}</h3>
+                              <p className="text-xs text-gray-400 line-clamp-1">{shops[1].description || 'Premium curated collection'}</p>
+                              <button className="bg-blue-600 text-white px-8 py-3 rounded-xl text-xs font-bold">Explore Collection →</button>
+                           </div>
+                           <div className="w-1/3 aspect-square relative z-10 flex items-center justify-center">
+                              {shops[1].logo ? (
+                                 <img src={shops[1].logo} className="w-32 h-32 object-contain group-hover:scale-110 transition-transform duration-700" alt={shops[1].name} />
+                              ) : (
+                                 <div className="w-24 h-24 bg-gray-50 rounded-full flex items-center justify-center text-3xl font-black text-gray-200">{shops[1].name[0]}</div>
+                              )}
+                           </div>
+                        </Link>
+                     )}
+                     {shops[2] && (
+                        <Link href={`/${shops[2].slug}`} className="bg-[#EDEFF1] rounded-[3rem] p-10 flex items-center justify-between shadow-sm hover:shadow-xl transition-all group overflow-hidden relative">
+                           <div className="space-y-6 relative z-10 w-2/3">
+                              <h3 className="text-2xc font-black text-[#1A1A1A] leading-tight" style={{ fontFamily: "var(--font-cormorant, serif)" }}>{shops[2].name}</h3>
+                              <p className="text-xs text-gray-400 line-clamp-1">{shops[2].description || 'Handcrafted Excellence'}</p>
+                              <button className="bg-blue-600 text-white px-8 py-3 rounded-xl text-xs font-bold">Explore Collection →</button>
+                           </div>
+                           <div className="w-1/3 relative z-10 flex items-center justify-center">
+                              {shops[2].logo ? (
+                                 <img src={shops[2].logo} className="w-32 h-full object-cover group-hover:rotate-6 transition-transform duration-700" alt={shops[2].name} />
+                              ) : (
+                                 <div className="w-24 h-24 bg-white/50 rounded-full flex items-center justify-center text-3xl font-black text-white">{shops[2].name[0]}</div>
+                              )}
+                           </div>
+                        </Link>
+                     )}
+                  </div>
 
-            {/* Tag filter pills */}
-            <div className="flex gap-2 flex-wrap">
-              {["All", "New", "Hot", "Sale"].map((tag) => (
-                <button
-                  key={tag}
-                  onClick={() => setActiveTag(tag)}
-                  className="px-4 py-2 rounded-full text-xs font-semibold tracking-wide uppercase transition-all duration-150"
-                  style={{
-                    background: activeTag === tag ? "var(--primary)" : "#fff",
-                    color: activeTag === tag ? "#fff" : "var(--foreground)",
-                    border: activeTag === tag ? "1.5px solid var(--primary)" : "1.5px solid var(--cream-dark)",
-                    cursor: "pointer",
-                  }}
-                >{tag}</button>
-              ))}
-            </div>
-
-            {/* Result count */}
-            {(searchQuery || activeTag !== "All") && (
-              <span className="text-xs whitespace-nowrap" style={{ color: "#999", fontFamily: "var(--font-jost, sans-serif)" }}>
-                {filteredArrivals.length} result{filteredArrivals.length !== 1 ? "s" : ""}
-              </span>
+                  {/* Side Section - 1 Shop */}
+                  {shops[3] && (
+                     <Link href={`/${shops[3].slug}`} className="col-span-12 md:col-span-3 bg-blue-600 rounded-[3rem] p-10 flex flex-col group relative overflow-hidden shadow-2xl shadow-blue-600/20">
+                        <div className="relative z-10">
+                           <span className="px-4 py-2 bg-white/20 text-white text-[10px] font-black rounded-full">New Arrival</span>
+                           <h3 className="text-3xl font-black text-white mt-6 leading-tight" style={{ fontFamily: "var(--font-cormorant, serif)" }}>{shops[3].name}</h3>
+                        </div>
+                        <div className="mt-auto relative z-10">
+                           <button className="bg-white text-blue-600 px-8 py-3 rounded-xl text-xs font-bold shadow-2xl">Visit Hub →</button>
+                        </div>
+                        {shops[3].logo ? (
+                           <img src={shops[3].logo} className="absolute bottom-[-10%] right-[-10%] w-[120%] h-[120%] object-contain opacity-20 group-hover:scale-110 transition-transform duration-1000" alt={shops[3].name} />
+                        ) : (
+                           <div className="absolute inset-0 bg-white/5" />
+                        )}
+                     </Link>
+                  )}
+               </>
+            ) : (
+               <div className="col-span-12 flex items-center justify-center border-4 border-dashed border-gray-100 rounded-[3rem] py-40">
+                  <p className="text-2xl font-black text-gray-200 uppercase tracking-widest italic">Curating Boutiques...</p>
+               </div>
             )}
-          </div>
+         </div>
+      </section>
 
-          {filteredArrivals.length === 0 ? (
-            <div className="text-center py-16">
-              <span className="text-5xl mb-4 block">🔍</span>
-              <h3 className="font-bold text-lg mb-2" style={{ fontFamily: "var(--font-cormorant, serif)", color: "var(--primary)" }}>No products found</h3>
-              <p className="text-sm mb-5" style={{ color: "#888", fontFamily: "var(--font-jost, sans-serif)" }}>Try a different search or clear the filters.</p>
-              <button
-                onClick={() => { setSearchQuery(""); setActiveTag("All"); }}
-                className="btn-primary px-7 py-3 rounded-full text-sm font-semibold tracking-wider uppercase"
-                style={{ cursor: "pointer" }}
-              >Clear Filters</button>
-            </div>
-          ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {filteredArrivals.map((product) => (
-              <div
-                key={product.id}
-                className="card-lift rounded-2xl overflow-hidden group"
-                style={{ background: "#fff", boxShadow: "0 4px 20px rgba(0,0,0,0.06)", cursor: "pointer" }}
-                onClick={() => openProduct(product)}
-              >
-                <ImageSlider images={product.images ?? []} alt={product.name} imgClass={product.imgClass} style={{ height: "340px" }}>
-                  {product.tag && (
-                  <span
-                    className="absolute top-3 left-3 px-3 py-1 rounded-full text-xs font-semibold tracking-wider uppercase"
-                    style={{
-                      background: product.tag === "Sale" ? "#dc2626" : product.tag === "Hot" ? "var(--accent)" : "var(--primary)",
-                      color: "#fff", fontFamily: "var(--font-jost, sans-serif)",
-                    }}
-                  >
-                    {product.tag}
-                  </span>
-                  )}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); toggleWishlist(product.id); }}
-                    className="absolute top-3 right-3 w-9 h-9 rounded-full flex items-center justify-center transition-all hover:scale-110"
-                    style={{ background: "rgba(255,255,255,0.9)", border: "none", cursor: "pointer" }}
-                    aria-label="Wishlist"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill={wishlist.includes(product.id) ? "var(--primary)" : "none"} stroke="var(--primary)" strokeWidth="2">
-                      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-                    </svg>
-                  </button>
-                  {product.outOfStock && (
-                    <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none" style={{ background: "rgba(0,0,0,0.28)" }}>
-                      <span className="px-4 py-2 rounded-full text-xs font-bold tracking-[0.2em] uppercase" style={{ background: "rgba(0,0,0,0.72)", color: "#fff", fontFamily: "var(--font-jost, sans-serif)" }}>Out of Stock</span>
-                    </div>
-                  )}
-                  <div className="absolute bottom-0 left-0 right-0 translate-y-full group-hover:translate-y-0 transition-transform duration-300 p-3">
-                    {product.outOfStock ? (
-                      <button
-                        disabled
-                        className="w-full py-3 rounded-xl text-sm font-semibold tracking-wider uppercase"
-                        style={{ background: "rgba(30,30,30,0.8)", color: "rgba(255,255,255,0.55)", cursor: "not-allowed", fontFamily: "var(--font-jost, sans-serif)" }}
-                      >
-                        Out of Stock
-                      </button>
-                    ) : (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); if (product.outOfStock) return; const dp: DetailProduct = { ...product, description:"", fabric:"", category:"", deliveryDays:0, sizes:[], colorHex:"#7b1e3a", discount:0 }; addToCart(dp, ""); }}
-                        className="btn-primary w-full py-3 rounded-xl text-sm font-semibold tracking-wider uppercase"
-                        style={{ fontFamily: "var(--font-jost, sans-serif)", cursor: "pointer" }}
-                      >
-                        Quick Add to Cart
-                      </button>
-                    )}
+      {/* ── PRODUCT OF THE MONTH 85% ── */}
+      <section className="w-[85%] mx-auto py-24 space-y-16">
+         <div className="flex items-center justify-between">
+            <h2 className="text-4xl font-black text-[#1A1A1A]">Product of The Month</h2>
+            <Link href="#" className="flex items-center gap-2 text-sm font-bold text-gray-400 hover:text-blue-600 transition-all">
+               View all <ArrowRight size={16} />
+            </Link>
+         </div>
+
+         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
+            {products.slice(0, 8).map((product) => (
+               <div 
+                  key={product.id} 
+                  onClick={() => setSelectedProduct(product)}
+                  className="bg-white rounded-[2.5rem] overflow-hidden shadow-sm hover:shadow-[0_40px_80px_rgba(0,0,0,0.08)] transition-all group flex flex-col cursor-pointer border border-gray-50"
+               >
+                  <div className="aspect-square relative bg-gray-50 p-6 flex items-center justify-center">
+                     <img src={product.images?.[0]} className="w-full h-full object-contain mix-blend-multiply group-hover:scale-110 transition-transform duration-700" alt={product.name} />
+                     <div className="absolute top-6 left-6 px-3 py-1 bg-[#FFEB3B] text-[9px] font-black uppercase tracking-widest rounded-md shadow-sm">Popular</div>
+                     <div className="absolute top-6 right-6 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0">
+                        <button className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-lg hover:text-red-500 transition-colors"><Heart size={18} /></button>
+                        <button className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-lg hover:text-blue-600 transition-colors"><ShoppingCart size={18} /></button>
+                     </div>
                   </div>
-                </ImageSlider>
-                <div className="p-4">
-                  <h3 className="font-semibold truncate mb-1" style={{ fontFamily: "var(--font-cormorant, serif)", fontSize: "1.1rem", color: "var(--foreground)" }}>
-                    {product.name}
-                  </h3>
-                  <div className="flex items-center gap-1 mb-2">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <svg key={i} width="11" height="11" viewBox="0 0 24 24" fill={i < Math.floor(product.rating) ? "var(--accent)" : "#ddd"} stroke="none">
-                        <polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/>
-                      </svg>
-                    ))}
-                    <span className="text-xs ml-1" style={{ color: "#999", fontFamily: "var(--font-jost, sans-serif)" }}>({product.reviews})</span>
+                  <div className="p-8 space-y-4">
+                     <div className="space-y-1">
+                        <h4 className="text-xl font-black text-[#1A1A1A] line-clamp-1 leading-tight">{product.name}</h4>
+                        <p className="text-sm font-black text-blue-600">₹{parseFloat(product.price).toLocaleString()}</p>
+                     </div>
+                     <button className="w-full py-4 bg-blue-600 text-white rounded-2xl text-xs font-black shadow-lg shadow-blue-600/20 active:scale-95 transition-all">
+                        Buy now
+                     </button>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-lg" style={{ color: "var(--primary)", fontFamily: "var(--font-jost, sans-serif)" }}>{product.price}</span>
-                    {product.original && (
-                      <span className="text-sm line-through" style={{ color: "#bbb", fontFamily: "var(--font-jost, sans-serif)" }}>{product.original}</span>
-                    )}
-                  </div>
-                </div>
-              </div>
+               </div>
             ))}
-          </div>
-          )}
-        </div>
+         </div>
       </section>
-
-      {/* ── FEATURED COLLECTIONS ── */}
-      <section id="collections" className="max-w-7xl mx-auto px-6 sm:px-8 py-20">
-        <div className="text-center mb-12">
-          <p className="text-xs tracking-[0.4em] uppercase mb-3" style={{ color: "var(--accent)", fontFamily: "var(--font-jost, sans-serif)" }}>Handpicked for You</p>
-          <h2 className="font-bold" style={{ fontFamily: "var(--font-cormorant, serif)", fontSize: "clamp(2rem, 4vw, 3rem)", color: "var(--primary)" }}>
-            Featured Collections
-          </h2>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {FEATURED.map((item, idx) => (
-            <div
-              key={item.id}
-              className={`card-lift relative rounded-2xl overflow-hidden group cursor-pointer ${idx === 0 ? "md:col-span-2" : ""}`}
-              style={{ minHeight: idx === 0 ? "520px" : "280px" }}
-            >
-              <div className={`absolute inset-0 ${item.imgClass}`} />
-              <div className="absolute inset-0 flex items-center justify-center opacity-15">
-                <span style={{ fontSize: "8rem" }}>🥻</span>
-              </div>
-              <div
-                className="absolute inset-0 transition-opacity duration-300"
-                style={{ background: "linear-gradient(to top, rgba(92,22,41,0.88) 0%, rgba(92,22,41,0.2) 60%, transparent 100%)" }}
-              />
-              <div className="absolute bottom-0 left-0 right-0 p-6">
-                <p className="text-xs tracking-[0.3em] uppercase mb-2" style={{ color: "var(--accent-light)", fontFamily: "var(--font-jost, sans-serif)", opacity: 0.85 }}>Collection</p>
-                <h3 className="font-bold mb-2" style={{ fontFamily: "var(--font-cormorant, serif)", fontSize: idx === 0 ? "2rem" : "1.4rem", color: "#fff" }}>
-                  {item.title}
-                </h3>
-                <p className="text-sm mb-4" style={{ color: "rgba(255,255,255,0.75)", fontFamily: "var(--font-jost, sans-serif)" }}>{item.sub}</p>
-                <a
-                  href="#"
-                  className="inline-flex items-center gap-2 text-sm font-semibold tracking-widest uppercase border-b pb-0.5 group-hover:gap-4 transition-all"
-                  style={{ color: "var(--accent-light)", borderColor: "var(--accent-light)", textDecoration: "none", fontFamily: "var(--font-jost, sans-serif)" }}
-                >
-                  Explore
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M5 12h14M12 5l7 7-7 7"/>
-                  </svg>
-                </a>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ── BRAND STORY BANNER ── */}
-      <section className="py-24 relative overflow-hidden" style={{ background: "var(--primary)" }}>
-        <div
-          className="absolute inset-0 opacity-5"
-          style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-          }}
-        />
-        <div className="max-w-4xl mx-auto px-8 text-center relative">
-          <span className="text-5xl mb-6 block animate-float">🪡</span>
-          <p className="text-xs tracking-[0.5em] uppercase mb-4" style={{ color: "var(--accent-light)", fontFamily: "var(--font-jost, sans-serif)" }}>Our Story</p>
-          <h2 className="font-bold mb-6 leading-tight" style={{ fontFamily: "var(--font-cormorant, serif)", fontSize: "clamp(2.2rem, 5vw, 3.8rem)", color: "#fff" }}>
-            Weaving Heritage into<br />
-            <em style={{ color: "var(--accent-light)" }}>Every Thread</em>
-          </h2>
-          <p className="leading-relaxed mb-10 max-w-2xl mx-auto" style={{ color: "rgba(255,255,255,0.85)", fontFamily: "var(--font-jost, sans-serif)", fontSize: "1.05rem" }}>
-            Born from a passion for India&apos;s rich textile traditions, Kurthī Couture partners with master artisans across Rajasthan, Lucknow, and Gujarat to bring you garments that tell a story — crafted with integrity, worn with pride.
-          </p>
-          <div className="flex flex-wrap justify-center gap-4">
-            <a
-              href="#"
-              className="inline-flex items-center gap-2 px-8 py-4 rounded-full font-semibold tracking-wider text-sm uppercase transition-all hover:scale-105"
-              style={{ background: "var(--accent)", color: "#fff", textDecoration: "none", fontFamily: "var(--font-jost, sans-serif)" }}
-            >
-              Our Story
-            </a>
-            <a
-              href="#"
-              className="inline-flex items-center gap-2 px-8 py-4 rounded-full font-semibold tracking-wider text-sm uppercase transition-all hover:scale-105"
-              style={{ border: "2px solid rgba(255,255,255,0.5)", color: "#fff", textDecoration: "none", fontFamily: "var(--font-jost, sans-serif)" }}
-            >
-              Meet Our Artisans
-            </a>
-          </div>
-        </div>
-      </section>
-
-      {/* ── TESTIMONIALS ── */}
-      <section className="py-20" style={{ background: "var(--cream)" }}>
-        <div className="max-w-7xl mx-auto px-6 sm:px-8">
-          <div className="text-center mb-12">
-            <p className="text-xs tracking-[0.4em] uppercase mb-3" style={{ color: "var(--accent)", fontFamily: "var(--font-jost, sans-serif)" }}>Love from Our Community</p>
-            <h2 className="font-bold" style={{ fontFamily: "var(--font-cormorant, serif)", fontSize: "clamp(2rem, 4vw, 3rem)", color: "var(--primary)" }}>
-              What Our Customers Say
-            </h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {TESTIMONIALS.map((t) => (
-              <div
-                key={t.name}
-                className="card-lift rounded-2xl p-8"
-                style={{ background: "#fff", boxShadow: "0 4px 24px rgba(123,30,58,0.07)" }}
-              >
-                <div className="flex gap-1 mb-5">
-                  {Array.from({ length: t.stars }).map((_, i) => (
-                    <svg key={i} width="14" height="14" viewBox="0 0 24 24" fill="var(--accent)" stroke="none">
-                      <polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/>
-                    </svg>
-                  ))}
-                </div>
-                <p className="leading-relaxed mb-6" style={{ color: "#555", fontFamily: "var(--font-jost, sans-serif)", fontSize: "0.95rem", fontStyle: "italic" }}>
-                  &ldquo;{t.text}&rdquo;
-                </p>
-                <div className="flex items-center gap-3">
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm"
-                    style={{ background: "var(--primary)", color: "#fff", fontFamily: "var(--font-jost, sans-serif)" }}
-                  >
-                    {t.name[0]}
-                  </div>
-                  <div>
-                    <div className="font-semibold text-sm" style={{ color: "var(--foreground)", fontFamily: "var(--font-jost, sans-serif)" }}>{t.name}</div>
-                    <div className="text-xs" style={{ color: "#999", fontFamily: "var(--font-jost, sans-serif)" }}>{t.location}</div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── INSTAGRAM STRIP ── */}
-      <section className="max-w-7xl mx-auto px-6 sm:px-8 py-20">
-        <div className="text-center mb-10">
-          <p className="text-xs tracking-[0.4em] uppercase mb-3" style={{ color: "var(--accent)", fontFamily: "var(--font-jost, sans-serif)" }}>@KurthiCouture</p>
-          <h2 className="font-bold" style={{ fontFamily: "var(--font-cormorant, serif)", fontSize: "clamp(2rem, 4vw, 3rem)", color: "var(--primary)" }}>
-            Style Inspiration
-          </h2>
-        </div>
-        <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-          {["product-img-1","product-img-2","product-img-3","product-img-4","product-img-5","product-img-6"].map((cls, i) => (
-            <div
-              key={i}
-              className="card-lift rounded-xl overflow-hidden group cursor-pointer relative"
-              style={{ aspectRatio: "1", minHeight: "100px" }}
-            >
-              <div className={`absolute inset-0 ${cls}`} />
-              <div className="absolute inset-0 flex items-center justify-center opacity-15">
-                <span style={{ fontSize: "3rem" }}>🥻</span>
-              </div>
-              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all duration-300 flex items-center justify-center">
-                <svg
-                  width="24" height="24" viewBox="0 0 24 24"
-                  fill="none" stroke="white" strokeWidth="2"
-                  className="opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
-                  <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
-                  <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
-                </svg>
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="text-center mt-8">
-          <a
-            href="#"
-            className="inline-flex items-center gap-2 text-sm font-semibold tracking-widest uppercase"
-            style={{ color: "var(--primary)", textDecoration: "none", fontFamily: "var(--font-jost, sans-serif)" }}
-          >
-            Follow on Instagram
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M5 12h14M12 5l7 7-7 7"/>
-            </svg>
-          </a>
-        </div>
-      </section>
-
-      {/* ── NEWSLETTER ── */}
-      <section
-        className="py-20 relative overflow-hidden"
-        style={{ background: "linear-gradient(135deg, var(--cream) 0%, var(--cream-dark) 100%)" }}
-      >
-        <div
-          className="absolute inset-0 opacity-30"
-          style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%237b1e3a' fill-opacity='0.07'%3E%3Cpath d='M50 50c0-5.523 4.477-10 10-10s10 4.477 10 10-4.477 10-10 10c0 5.523-4.477 10-10 10s-10-4.477-10-10 4.477-10 10-10zM10 10c0-5.523 4.477-10 10-10s10 4.477 10 10-4.477 10-10 10c0 5.523-4.477 10-10 10S0 25.523 0 20s4.477-10 10-10z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-          }}
-        />
-        <div className="max-w-2xl mx-auto px-8 text-center relative">
-          <span className="text-4xl mb-4 block">💌</span>
-          <p className="text-xs tracking-[0.4em] uppercase mb-3" style={{ color: "var(--accent)", fontFamily: "var(--font-jost, sans-serif)" }}>Stay Connected</p>
-          <h2 className="font-bold mb-4" style={{ fontFamily: "var(--font-cormorant, serif)", fontSize: "clamp(2rem, 4vw, 3rem)", color: "var(--primary)" }}>
-            Join the Kurthī Circle
-          </h2>
-          <p className="mb-8" style={{ color: "#666", fontFamily: "var(--font-jost, sans-serif)" }}>
-            Get exclusive access to new launches, style guides, and member-only offers — straight to your inbox.
-          </p>
-          {subscribed ? (
-            <div
-              className="py-4 px-8 rounded-full inline-flex items-center gap-3 font-semibold"
-              style={{ background: "var(--primary)", color: "#fff", fontFamily: "var(--font-jost, sans-serif)" }}
-            >
-              <span>✓</span> Thank you for joining! Welcome to the circle.
-            </div>
-          ) : (
-            <form onSubmit={handleSubscribe} className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto">
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter your email address"
-                required
-                className="flex-1 px-5 py-4 rounded-full text-sm outline-none"
-                style={{
-                  border: "2px solid var(--cream-dark)", background: "#fff",
-                  fontFamily: "var(--font-jost, sans-serif)", color: "var(--foreground)", transition: "border-color 0.2s",
-                }}
-                onFocus={(e) => (e.currentTarget.style.borderColor = "var(--primary)")}
-                onBlur={(e)  => (e.currentTarget.style.borderColor = "var(--cream-dark)")}
-              />
-              <button
-                type="submit"
-                className="btn-primary px-6 py-4 rounded-full font-semibold tracking-wider text-sm uppercase whitespace-nowrap"
-                style={{ fontFamily: "var(--font-jost, sans-serif)", cursor: "pointer" }}
-              >
-                Subscribe
-              </button>
-            </form>
-          )}
-          <p className="mt-4 text-xs" style={{ color: "#aaa", fontFamily: "var(--font-jost, sans-serif)" }}>
-            No spam, ever. Unsubscribe at any time.
-          </p>
-        </div>
-      </section>
-
-      <Footer />
-
-      {/* ── AUTH PROMPT MODAL ── */}
-      {authPrompt && (
-        <div style={{ position:"fixed",inset:0,zIndex:4000,background:"rgba(0,0,0,0.55)",backdropFilter:"blur(6px)",display:"flex",alignItems:"center",justifyContent:"center",padding:"16px" }} onClick={()=>setAuthPrompt(false)}>
-          <div style={{ background:"#fff",borderRadius:"28px",maxWidth:"400px",width:"100%",padding:"40px 36px",textAlign:"center",boxShadow:"0 32px 100px rgba(0,0,0,0.3)",position:"relative" }} onClick={e=>e.stopPropagation()}>
-            <button onClick={()=>setAuthPrompt(false)} style={{ position:"absolute",top:"14px",right:"14px",background:"none",border:"none",cursor:"pointer",fontSize:"1.2rem",color:"#aaa" }}>✕</button>
-            <div style={{ fontSize:"3rem",marginBottom:"16px" }}>🛍️</div>
-            <h3 style={{ fontFamily:"var(--font-cormorant,serif)",fontSize:"1.7rem",fontWeight:700,color:"var(--primary)",marginBottom:"8px" }}>Sign in to continue</h3>
-            <p style={{ fontSize:"0.88rem",color:"#888",marginBottom:"28px",lineHeight:1.6 }}>Please log in or create an account to add items to your cart.</p>
-            <div style={{ display:"flex",flexDirection:"column",gap:"12px" }}>
-              <a href="/login" style={{ display:"block",padding:"14px",borderRadius:"14px",background:"var(--primary)",color:"#fff",textDecoration:"none",fontWeight:700,fontSize:"0.85rem",letterSpacing:"0.1em",textTransform:"uppercase" }}>Sign In</a>
-              <a href="/signup" style={{ display:"block",padding:"14px",borderRadius:"14px",border:"1.5px solid var(--primary)",color:"var(--primary)",textDecoration:"none",fontWeight:700,fontSize:"0.85rem",letterSpacing:"0.1em",textTransform:"uppercase" }}>Create Account</a>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── PRODUCT DETAIL MODAL ── */}
       {selectedProduct && (
-        <div
-          style={{ position:"fixed",inset:0,zIndex:3000,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",justifyContent:"center",padding:"16px",overflowY:"auto" }}
-          onClick={closeProduct}
-        >
-          <div
-            style={{ background:"#fff",borderRadius:"28px",maxWidth:"900px",width:"100%",boxShadow:"0 32px 100px rgba(0,0,0,0.35)",overflow:"hidden",position:"relative",fontFamily:"var(--font-jost,sans-serif)" }}
-            onClick={e=>e.stopPropagation()}
-          >
-            {/* close */}
-            <button
-              onClick={closeProduct}
-              style={{ position:"absolute",top:"16px",right:"16px",zIndex:10,width:"38px",height:"38px",borderRadius:"50%",background:"rgba(0,0,0,0.08)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.2rem",color:"#555" }}
-            >✕</button>
+         <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-xl p-4 md:p-8 animate-in fade-in duration-500" onClick={() => setSelectedProduct(null)}>
+            <div className="bg-white w-full max-w-6xl h-full md:h-auto md:max-h-[90vh] rounded-[3rem] shadow-2xl overflow-hidden flex flex-col md:flex-row relative animate-in slide-in-from-bottom-10 duration-700" onClick={e => e.stopPropagation()}>
+               <button 
+                  onClick={() => setSelectedProduct(null)} 
+                  className="absolute top-8 right-8 z-20 w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center shadow-xl hover:rotate-90 transition-all text-gray-400 hover:text-red-500"
+               >
+                  <X size={24} />
+               </button>
 
-            <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr" }} className="product-modal-grid">
-              {/* Image panel */}
-              <ImageSlider images={selectedProduct.images ?? []} alt={selectedProduct.name} imgClass={selectedProduct.imgClass} alwaysShowControls showThumbs style={{ minHeight:"480px" }}>
-                {selectedProduct.tag && (
-                  <span style={{ position:"absolute",top:"18px",left:"18px",background:selectedProduct.tag==="Sale"?"#dc2626":selectedProduct.tag==="Hot"?"var(--accent)":"var(--primary)",color:"#fff",padding:"5px 14px",borderRadius:"999px",fontSize:"0.72rem",fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase" }}>
-                    {selectedProduct.tag}
-                  </span>
-                )}
-                {selectedProduct.outOfStock && (
-                  <div style={{ position:"absolute",inset:0,background:"rgba(0,0,0,0.3)",display:"flex",alignItems:"center",justifyContent:"center" }}>
-                    <span style={{ background:"rgba(0,0,0,0.75)",color:"#fff",padding:"8px 20px",borderRadius:"999px",fontSize:"0.75rem",fontWeight:700,letterSpacing:"0.15em",textTransform:"uppercase" }}>Out of Stock</span>
+               {/* Image Gallery */}
+               <div className="w-full md:w-1/2 bg-gray-50 flex flex-col border-b md:border-b-0 md:border-r border-gray-100">
+                  <div className="flex-1 p-12 flex items-center justify-center relative group min-h-[400px]">
+                     <img 
+                        src={activeImage || "https://images.unsplash.com/photo-1542291026-7eec264c27ff?q=80&w=1000&auto=format&fit=crop"} 
+                        alt={selectedProduct.name}
+                        className="w-full h-full max-h-[500px] object-contain mix-blend-multiply transition-all duration-700"
+                     />
                   </div>
-                )}
-              </ImageSlider>
-
-              {/* Info panel */}
-              <div style={{ padding:"40px 36px",display:"flex",flexDirection:"column",gap:"20px",overflowY:"auto",maxHeight:"520px" }}>
-
-                {/* Category & fabric badges */}
-                <div style={{ display:"flex",gap:"8px",flexWrap:"wrap" }}>
-                  {selectedProduct.category && <span style={{ background:"var(--cream)",color:"var(--accent)",padding:"4px 12px",borderRadius:"999px",fontSize:"0.7rem",fontWeight:600,letterSpacing:"0.06em" }}>{selectedProduct.category}</span>}
-                  {selectedProduct.fabric    && <span style={{ background:"#f0f0f0",color:"#666",padding:"4px 12px",borderRadius:"999px",fontSize:"0.7rem",fontWeight:600 }}>{selectedProduct.fabric}</span>}
-                </div>
-
-                {/* Name */}
-                <div>
-                  <h2 style={{ fontFamily:"var(--font-cormorant,serif)",fontSize:"clamp(1.5rem,3vw,2rem)",fontWeight:700,color:"var(--primary)",lineHeight:1.2,margin:0 }}>{selectedProduct.name}</h2>
-                </div>
-
-                {/* Rating */}
-                <div style={{ display:"flex",alignItems:"center",gap:"6px" }}>
-                  {Array.from({length:5}).map((_,i)=>(
-                    <svg key={i} width="14" height="14" viewBox="0 0 24 24" fill={i<Math.floor(selectedProduct.rating)?"var(--accent)":"#e0e0e0"} stroke="none">
-                      <polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/>
-                    </svg>
-                  ))}
-                  <span style={{ fontSize:"0.82rem",color:"var(--accent)",fontWeight:700 }}>{selectedProduct.rating}</span>
-                  <span style={{ fontSize:"0.78rem",color:"#aaa" }}>({selectedProduct.reviews} reviews)</span>
-                </div>
-
-                {/* Price */}
-                <div style={{ display:"flex",alignItems:"baseline",gap:"12px",flexWrap:"wrap" }}>
-                  <span style={{ fontFamily:"var(--font-cormorant,serif)",fontSize:"2rem",fontWeight:700,color:"var(--primary)" }}>{selectedProduct.price}</span>
-                  {selectedProduct.original && <>
-                    <span style={{ fontSize:"1rem",color:"#bbb",textDecoration:"line-through" }}>{selectedProduct.original}</span>
-                    {selectedProduct.discount>0 && <span style={{ background:"#fef2f2",color:"#dc2626",padding:"3px 10px",borderRadius:"999px",fontSize:"0.75rem",fontWeight:700 }}>{selectedProduct.discount}% OFF</span>}
-                  </>}
-                </div>
-
-                <div style={{ height:"1px",background:"var(--cream-dark)" }}/>
-
-                {/* Sizes */}
-                {selectedProduct.sizes.length>0 && (
-                  <div>
-                    <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"10px" }}>
-                      <span style={{ fontSize:"0.78rem",fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color: sizeError?"#dc2626":"#888" }}>Select Size {sizeError && "← please choose a size"}</span>
-                      {selectedSize && <span style={{ fontSize:"0.78rem",color:"var(--accent)",fontWeight:600 }}>Selected: {selectedSize}</span>}
+                  {selectedProduct.images && selectedProduct.images.length > 1 && (
+                    <div className="p-8 border-t border-gray-200/50 bg-white">
+                      <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-none">
+                         {selectedProduct.images.map((img: string, i: number) => (
+                           <button 
+                             key={i} 
+                             onClick={() => setActiveImage(img)}
+                             className={`w-20 h-20 rounded-2xl flex-shrink-0 overflow-hidden border-2 transition-all p-2 bg-gray-50 ${activeImage === img ? 'border-blue-600 shadow-md scale-105' : 'border-transparent'}`}
+                           >
+                             <img src={img} className="w-full h-full object-contain mix-blend-multiply" alt={`Thumbnail ${i}`} />
+                           </button>
+                         ))}
+                      </div>
                     </div>
-                    <div style={{ display:"flex",flexWrap:"wrap",gap:"8px",outline: sizeError?"2px solid #fca5a5":"none",borderRadius:"12px",padding: sizeError?"8px":"0" }}>
-                      {selectedProduct.sizes.map(s=>(
-                        <button
-                          key={s}
-                          type="button"
-                          onClick={()=>{ setSelectedSize(s); setSizeError(false); }}
-                          style={{ padding:"7px 14px",borderRadius:"10px",fontSize:"0.82rem",fontWeight:600,cursor:"pointer",border:`1.5px solid ${selectedSize===s?"var(--primary)":"var(--cream-dark)"}`,background:selectedSize===s?"var(--primary)":"#fff",color:selectedSize===s?"#fff":"var(--foreground)",transition:"all 0.15s",minWidth:"42px",textAlign:"center" }}
-                        >{s}</button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Delivery */}
-                {selectedProduct.deliveryDays>0 && (
-                  <div style={{ display:"flex",alignItems:"center",gap:"8px",background:"#f0fdf4",borderRadius:"12px",padding:"10px 14px" }}>
-                    <span style={{ fontSize:"1.1rem" }}>🚚</span>
-                    <span style={{ fontSize:"0.82rem",color:"#15803d",fontWeight:600 }}>Delivery in {selectedProduct.deliveryDays} days</span>
-                  </div>
-                )}
-
-                {/* Description */}
-                {selectedProduct.description && (
-                  <div>
-                    <p style={{ fontSize:"0.78rem",fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",color:"#aaa",marginBottom:"6px" }}>About this product</p>
-                    <p style={{ fontSize:"0.88rem",color:"#555",lineHeight:1.75,margin:0 }}>{selectedProduct.description}</p>
-                  </div>
-                )}
-
-                <div style={{ height:"1px",background:"var(--cream-dark)" }}/>
-
-                {/* Actions */}
-                <div style={{ display:"flex",gap:"12px",flexWrap:"wrap" }}>
-                  {selectedProduct.outOfStock ? (
-                    <button disabled style={{ flex:1,padding:"14px",borderRadius:"14px",background:"#e0e0e0",color:"#aaa",border:"none",fontSize:"0.85rem",fontWeight:600,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"not-allowed" }}>Out of Stock</button>
-                  ) : (
-                    <button
-                      onClick={()=>{ addToCart(selectedProduct, selectedSize); }}
-                      style={{ flex:1,padding:"14px",borderRadius:"14px",background:"var(--primary)",color:"#fff",border:"none",fontSize:"0.85rem",fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",cursor:"pointer" }}
-                    >Add to Cart</button>
                   )}
-                  <button
-                    onClick={()=>toggleWishlist(selectedProduct.id)}
-                    style={{ width:"50px",height:"50px",borderRadius:"14px",border:"1.5px solid var(--cream-dark)",background:wishlist.includes(selectedProduct.id)?"#fff0f5":"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0 }}
-                  >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill={wishlist.includes(selectedProduct.id)?"var(--primary)":"none"} stroke="var(--primary)" strokeWidth="2">
-                      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
-                    </svg>
-                  </button>
-                </div>
+               </div>
 
-                {/* Trust row */}
-                <div style={{ display:"flex",gap:"12px",flexWrap:"wrap" }}>
-                  {[["↩","30-day returns"],["🔒","Secure checkout"],["💎","Authentic product"]].map(([icon,label])=>(
-                    <div key={label} style={{ display:"flex",alignItems:"center",gap:"5px" }}>
-                      <span style={{ fontSize:"0.9rem" }}>{icon}</span>
-                      <span style={{ fontSize:"0.72rem",color:"#888",fontWeight:500 }}>{label}</span>
-                    </div>
-                  ))}
-                </div>
+               {/* Content */}
+               <div className="w-full md:w-1/2 overflow-y-auto p-12 md:p-16 space-y-10 custom-scrollbar">
+                  <div className="space-y-4">
+                     <span className="text-blue-600 font-black uppercase tracking-[0.3em] text-[10px]">{selectedProduct.category}</span>
+                     <h2 className="text-4xl md:text-5xl font-black text-[#1A1A1A] leading-tight">
+                        {selectedProduct.name}
+                     </h2>
+                     <div className="flex items-center gap-4">
+                        <span className="text-3xl font-black text-blue-600">₹{parseFloat(selectedProduct.price).toLocaleString()}</span>
+                        {parseFloat(selectedProduct.mrp) > parseFloat(selectedProduct.price) && (
+                           <div className="flex items-center gap-2">
+                              <span className="text-lg text-gray-300 line-through">₹{parseFloat(selectedProduct.mrp).toLocaleString()}</span>
+                              <span className="bg-red-50 text-red-500 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest">
+                                 {Math.round((1 - parseFloat(selectedProduct.price)/parseFloat(selectedProduct.mrp)) * 100)}% OFF
+                              </span>
+                           </div>
+                        )}
+                     </div>
+                  </div>
 
-              </div>
+                  <div className="space-y-6">
+                     <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest">Product Description</h4>
+                     <p className="text-gray-500 leading-relaxed text-sm">
+                        {selectedProduct.description || "Premium quality product sourced from verified sellers in Vygron Hub. Experience ultimate comfort and superior design language with every purchase."}
+                     </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-8 py-6 border-y border-gray-100">
+                     <div className="space-y-2">
+                        <span className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Boutique</span>
+                        <p className="font-bold text-[#1A1A1A] text-sm">{selectedProduct.shop_name || "Vygron Elite"}</p>
+                     </div>
+                     <div className="space-y-2 text-right">
+                        <span className="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Delivery</span>
+                        <p className="font-bold text-green-600 text-sm">Express Available</p>
+                     </div>
+                  </div>
+
+                  <div className="pt-10 flex flex-col sm:flex-row gap-4">
+                     <button 
+                        onClick={() => addToCart(selectedProduct)}
+                        className="flex-[2] py-6 bg-blue-600 text-white rounded-3xl text-[10px] font-black uppercase tracking-[0.3em] transition-all shadow-2xl shadow-blue-600/20 active:scale-95 flex items-center justify-center gap-3"
+                     >
+                        <ShoppingBag size={18} /> Add to Cart
+                     </button>
+                     <Link href={`/${selectedProduct.shop_slug || 'shop'}`} className="flex-1 py-6 bg-gray-50 text-[#1A1A1A] rounded-3xl text-[10px] font-black uppercase tracking-[0.3em] text-center">
+                        Visit Shop
+                     </Link>
+                  </div>
+               </div>
             </div>
-          </div>
-        </div>
+         </div>
       )}
 
-      <style>{`
-        @media (max-width: 640px) {
-          .product-modal-grid { grid-template-columns: 1fr !important; }
-        }
-      `}</style>
-
-      {/* ── WISHLIST TOAST ── */}
-      {wishlistToast.show && (
-        <div
-          style={{
-            position: "fixed", bottom: "1.5rem", right: "1.5rem", zIndex: 9999,
-            background: "var(--primary)", color: "#fff", borderRadius: "0.75rem",
-            padding: "0.75rem 1.25rem", display: "flex", alignItems: "center", gap: "0.6rem",
-            boxShadow: "0 4px 24px rgba(0,0,0,0.18)", fontFamily: "var(--font-jost, sans-serif)",
-            fontSize: "0.9rem", fontWeight: 500, animation: "fadeInUp 0.25s ease",
-          }}
-        >
-          <span>{wishlistToast.added ? "❤️" : "🤍"}</span>
-          <span>{wishlistToast.added ? "Added to Wishlist" : "Removed from Wishlist"}</span>
-          {wishlistToast.added && (
-            <a href="/profile?tab=wishlist" style={{ color: "var(--accent-light)", marginLeft: "0.4rem", textDecoration: "underline", fontSize: "0.8rem" }}>View</a>
-          )}
-        </div>
-      )}
-
-      <style>{`
-        @media (max-width: 640px) {
-          .product-modal-grid { grid-template-columns: 1fr !important; }
-        }
-        @keyframes fadeInUp {
-          from { opacity: 0; transform: translateY(12px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
+      <Footer />
     </div>
   );
 }

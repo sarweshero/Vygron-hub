@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { getCachedUserInfo } from "@/lib/api";
+import { getCachedUserInfo, clearUserToken } from "@/lib/api";
+import { User, LogOut, Settings, LayoutDashboard, Package, Heart } from "lucide-react";
 
 const NAV_LINKS = ["New Arrivals", "Collections"];
 
@@ -30,12 +31,29 @@ export default function Navbar({
   const [menuOpen, setMenuOpen] = useState(false);
   const [cartCount, setCartCount] = useState(cartCountProp ?? 0);
   const [userName, setUserName] = useState("");
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setShowUserMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleLogout = () => {
+    clearUserToken();
+    window.location.reload();
+  };
 
   /* Auto-read cart count + user name from localStorage */
   useEffect(() => {
     try {
       if (cartCountProp === undefined) {
-        const s = localStorage.getItem("kurthi_cart");
+        const s = localStorage.getItem("vygron_cart");
         if (s) {
           const items: { qty: number }[] = JSON.parse(s);
           setCartCount(items.reduce((sum, i) => sum + i.qty, 0));
@@ -61,10 +79,10 @@ export default function Navbar({
         {/* Logo */}
         <Link href="/" style={{ textDecoration: "none" }}>
           <div className="text-2xl font-bold tracking-[0.15em]" style={{ fontFamily: "var(--font-cormorant, serif)", color: "var(--primary)", lineHeight: 1 }}>
-            KURTHĪ
+            VYGRON
           </div>
           <div className="text-xs tracking-[0.35em] uppercase mt-[2px]" style={{ color: "var(--accent)", fontFamily: "var(--font-jost, sans-serif)", fontSize: "0.6rem" }}>
-            COUTURE
+            HUB
           </div>
         </Link>
 
@@ -74,7 +92,7 @@ export default function Navbar({
             {NAV_LINKS.map((link) => (
               <li key={link}>
                 <Link
-                  href={link === "Collections" || link === "New Arrivals" ? "/products" : "#"}
+                  href={link === "Collections" || link === "New Arrivals" ? "/#categories" : "#"}
                   className="text-sm font-medium tracking-wider uppercase transition-colors duration-200 hover:opacity-70"
                   style={{ color: "var(--foreground)", textDecoration: "none", fontFamily: "var(--font-jost, sans-serif)", fontSize: "0.78rem" }}
                 >
@@ -125,10 +143,47 @@ export default function Navbar({
           {/* Account / User – full and simple */}
           {(variant === "full" || variant === "simple") && (
             userName ? (
-              <Link href="/profile" className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold tracking-wide" style={{ background: "var(--primary)", color: "#fff", textDecoration: "none" }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                {userName}
-              </Link>
+              <div className="relative" ref={userMenuRef}>
+                <button 
+                  onClick={() => setShowUserMenu(!showUserMenu)}
+                  className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold tracking-wide cursor-pointer transition-all hover:bg-[var(--cream-dark)]" 
+                  style={{ background: "var(--primary)", color: "#fff", border: "none" }}
+                >
+                  <User size={14} />
+                  {userName}
+                </button>
+                
+                {showUserMenu && (
+                  <div className="absolute right-0 mt-3 w-56 bg-white rounded-2xl shadow-xl border border-gray-100 py-3 z-[200] animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="px-5 py-3 border-b border-gray-50 mb-1">
+                       <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Account Hub</p>
+                       <p className="text-sm font-bold text-[#1A1A1A] truncate">{userName}</p>
+                    </div>
+                    
+                    <div className="flex flex-col">
+                       <Link href="/dashboard/customer" className="flex items-center gap-3 px-5 py-2.5 text-xs font-bold text-gray-600 hover:bg-gray-50 hover:text-[var(--primary)] transition-colors" style={{ textDecoration: "none" }}>
+                          <LayoutDashboard size={14} /> Dashboard
+                       </Link>
+                       <Link href="/dashboard/customer?tab=orders" className="flex items-center gap-3 px-5 py-2.5 text-xs font-bold text-gray-600 hover:bg-gray-50 hover:text-[var(--primary)] transition-colors" style={{ textDecoration: "none" }}>
+                          <Package size={14} /> My Orders
+                       </Link>
+                       <Link href="/dashboard/customer?tab=wishlist" className="flex items-center gap-3 px-5 py-2.5 text-xs font-bold text-gray-600 hover:bg-gray-50 hover:text-[var(--primary)] transition-colors" style={{ textDecoration: "none" }}>
+                          <Heart size={14} /> Wishlist
+                       </Link>
+                       
+                       <div className="h-[1px] bg-gray-50 my-1" />
+                       
+                       <button 
+                         onClick={handleLogout}
+                         className="flex items-center gap-3 px-5 py-2.5 text-xs font-bold text-red-500 hover:bg-red-50 transition-colors w-full text-left"
+                         style={{ background: "none", border: "none", cursor: "pointer" }}
+                       >
+                          <LogOut size={14} /> Sign Out
+                       </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             ) : (
               <Link href="/login" className="hidden sm:flex items-center gap-1.5 p-2 rounded-xl transition-colors hover:bg-[var(--cream)]" style={{ color: "var(--primary)", textDecoration: "none" }} title="My Account">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -183,13 +238,32 @@ export default function Navbar({
           {NAV_LINKS.map((link) => (
             <Link
               key={link}
-              href={link === "Collections" || link === "New Arrivals" ? "/products" : "#"}
+              href={link === "Collections" || link === "New Arrivals" ? "/#categories" : "#"}
               className="block py-3 text-sm font-medium tracking-wider uppercase"
               style={{ color: "var(--foreground)", textDecoration: "none", borderBottom: "1px solid var(--cream-dark)", fontFamily: "var(--font-jost, sans-serif)" }}
             >
               {link}
             </Link>
           ))}
+          {userName ? (
+            <Link
+              href="/dashboard/customer"
+              className="block py-4 text-sm font-bold tracking-wider uppercase border-b border-gray-100 flex items-center justify-between"
+              style={{ color: "var(--primary)", textDecoration: "none", fontFamily: "var(--font-jost, sans-serif)" }}
+            >
+              <span>{userName}&apos;s Profile</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </Link>
+          ) : (
+            <Link
+              href="/login"
+              className="block py-4 text-sm font-bold tracking-wider uppercase border-b border-gray-100 flex items-center justify-between"
+              style={{ color: "var(--foreground)", textDecoration: "none", fontFamily: "var(--font-jost, sans-serif)" }}
+            >
+              <span>Login / Sign Up</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </Link>
+          )}
         </div>
       )}
     </nav>

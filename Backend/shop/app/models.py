@@ -5,12 +5,11 @@ from django.db import models
 # ── Product ────────────────────────────────────────────────────────────
 class Product(models.Model):
     CATEGORY_CHOICES = [
-        ("Casual Wear",  "Casual Wear"),
-        ("Festive",      "Festive"),
-        ("Embroidered",  "Embroidered"),
-        ("Block Print",  "Block Print"),
-        ("Silk & Satin", "Silk & Satin"),
-        ("Designer",     "Designer"),
+        ("Womens Wear",  "Womens Wear"),
+        ("Mens Wear",    "Mens Wear"),
+        ("Electronics",  "Electronics"),
+        ("Home & Living","Home & Living"),
+        ("Others",       "Others"),
     ]
     TAG_CHOICES = [
         ("New",  "New"),
@@ -19,14 +18,17 @@ class Product(models.Model):
         ("Luxe", "Luxe"),
     ]
 
+    # Linking product to a specific shop
+    shop = models.ForeignKey('Shop', on_delete=models.CASCADE, related_name="products", null=True, blank=True)
     name          = models.CharField(max_length=200)
     mrp           = models.PositiveIntegerField(help_text="Maximum Retail Price (₹)")
     price         = models.PositiveIntegerField(help_text="Selling Price (₹)")
     sizes         = models.JSONField(default=list, help_text='e.g. ["S","M","L","XL"]')
     description   = models.TextField(blank=True)
     delivery_days = models.PositiveSmallIntegerField(default=5)
-    category      = models.CharField(max_length=50, choices=CATEGORY_CHOICES)
-    fabric        = models.CharField(max_length=100)
+    category      = models.CharField(max_length=100, default="Others")
+    fabric        = models.CharField(max_length=100, blank=True, null=True)
+    specifications = models.JSONField(default=dict, blank=True, help_text='e.g. {"RAM": "8GB", "Brand": "Sony"}')
     img_class     = models.CharField(max_length=50, default="product-img-1")
     images        = models.JSONField(default=list, blank=True, help_text="List of image URLs")
     tag           = models.CharField(max_length=10, choices=TAG_CHOICES, blank=True, null=True)
@@ -36,6 +38,7 @@ class Product(models.Model):
     show_on_home  = models.BooleanField(default=False)
     is_new        = models.BooleanField(default=False)
     is_bestseller = models.BooleanField(default=False)
+    is_featured   = models.BooleanField(default=False)
     color_hex     = models.CharField(max_length=20, default="#7b1e3a")
     offer_from    = models.DateField(blank=True, null=True)
     offer_to      = models.DateField(blank=True, null=True)
@@ -70,11 +73,13 @@ class Order(models.Model):
     ]
 
     id          = models.CharField(max_length=30, primary_key=True)
+    shop        = models.ForeignKey('Shop', on_delete=models.CASCADE, related_name="orders", null=True, blank=True)
     customer    = models.CharField(max_length=150)
     email       = models.EmailField(blank=True, default="")
     phone       = models.CharField(max_length=20)
-    city        = models.CharField(max_length=100)
-    date        = models.DateField()
+    address     = models.TextField(blank=True, default="")
+    city        = models.CharField(max_length=100, blank=True, default="")
+    date        = models.DateField(auto_now_add=True)
     total       = models.PositiveIntegerField()
     status      = models.CharField(max_length=20, choices=STATUS_CHOICES, default="placed")
     pay_method  = models.CharField(max_length=50)
@@ -98,6 +103,7 @@ class Order(models.Model):
 # ── OrderItem ──────────────────────────────────────────────────────────
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, related_name="items", on_delete=models.CASCADE)
+    shop  = models.ForeignKey('Shop', on_delete=models.SET_NULL, null=True, blank=True)
     name  = models.CharField(max_length=200)
     qty   = models.PositiveSmallIntegerField(default=1)
     size  = models.CharField(max_length=10)
@@ -115,6 +121,43 @@ class UserProfile(models.Model):
         related_name="profile",
     )
     phone = models.CharField(max_length=20, blank=True, default="")
+    user_type = models.CharField(
+        max_length=20,
+        choices=[("customer", "Customer"), ("shop_owner", "Shop Owner")],
+        default="customer"
+    )
 
     def __str__(self):
         return self.user.email
+
+
+# ── Shop ───────────────────────────────────────────────────────────────
+class Shop(models.Model):
+    owner = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="shop_profile"
+    )
+    name = models.CharField(max_length=255)
+    slug = models.SlugField(unique=True, help_text="Used in the URL: vygron.co.in/shop-slug")
+    description = models.TextField(blank=True, help_text="e.g. clothing brand")
+    tagline = models.CharField(max_length=255, blank=True, help_text="A short catchy phrase for your shop")
+    logo = models.CharField(max_length=500, blank=True, help_text="URL to shop logo image")
+    banner = models.CharField(max_length=500, blank=True, help_text="URL to top header banner image")
+    hero_heading = models.CharField(max_length=255, default="Quality You Can Trust")
+    categories_heading = models.CharField(max_length=255, default="Discover Our Collection")
+    business_details = models.TextField(blank=True, help_text="Detailed info about what they sell")
+    custom_categories = models.JSONField(default=list, blank=True, help_text='e.g. ["Electronics", "Summer Collection"]')
+    
+    # Customization
+    bg_color = models.CharField(max_length=20, default="#ffffff", help_text="Background color of the shop page")
+    footer_address = models.TextField(blank=True)
+    footer_phone = models.CharField(max_length=50, blank=True)
+    footer_email = models.EmailField(blank=True)
+    
+    is_approved = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name
