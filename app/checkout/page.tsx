@@ -39,7 +39,6 @@ export default function CheckoutPage() {
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
   const [addrMode, setAddrMode]             = useState<"saved" | "new">("new");
   const [selectedAddrId, setSelectedAddrId] = useState<string>("");
-  const [saveAddr, setSaveAddr]             = useState(false);
   const [addrLabel, setAddrLabel]           = useState("Home");
 
   useEffect(() => {
@@ -81,7 +80,7 @@ export default function CheckoutPage() {
   const [card, setCard] = useState({ number: "", name: "", expiry: "", cvv: "" });
   const [processing, setProcessing] = useState(false);
 
-  const validateAddress = () => {
+  const validateAddress = (shouldSave = false) => {
     if (addrMode === "saved") {
       const sa = savedAddresses.find(a => a.id === selectedAddrId);
       if (!sa) { setAddrError("Please select a delivery address."); return false; }
@@ -94,7 +93,7 @@ export default function CheckoutPage() {
     if (!/^\d{10}$/.test(addr.phone)) { setAddrError("Enter a valid 10-digit phone number."); return false; }
     if (!/^\d{6}$/.test(addr.pincode)) { setAddrError("Enter a valid 6-digit pincode."); return false; }
     setAddrError("");
-    if (saveAddr) {
+    if (shouldSave) {
       const newSaved: SavedAddress = {
         id: Date.now().toString(), label: addrLabel || "Home",
         ...addr, isDefault: savedAddresses.length === 0,
@@ -115,10 +114,11 @@ export default function CheckoutPage() {
     setPlacedOrderId(orderId);
 
     /* POST to API — primary method */
+    let orderFailed = false;
     try {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (userToken) headers["Authorization"] = `Bearer ${userToken}`;
-      await fetch(`${BASE}/orders/`, {
+      const res = await fetch(`${BASE}/orders/`, {
         method: "POST",
         headers,
         body: JSON.stringify({
@@ -130,17 +130,24 @@ export default function CheckoutPage() {
           date:       dateStr,
           total:      cartTotal,
           pay_method: payMethod.toUpperCase(),
-          items:      cartItems.map(i => ({ 
+          items:      cartItems.map(i => ({
             id: i.id, // product id
-            name: i.name, 
-            qty: i.qty, 
+            name: i.name,
+            qty: i.qty,
             price: i.price,
             shop_slug: (i as any).shop_slug || "vygron-hub",
             shop_name: (i as any).shop_name || "Vygron Premium"
           })),
         }),
       });
-    } catch { /* backend unreachable — proceed anyway */ }
+      if (!res.ok) orderFailed = true;
+    } catch { orderFailed = true; }
+
+    if (orderFailed) {
+      setProcessing(false);
+      alert("Order failed. Please try again.");
+      return;
+    }
 
     /* clear cart */
     try { localStorage.removeItem("vygron_cart"); } catch {}
@@ -286,7 +293,7 @@ export default function CheckoutPage() {
                              </div>
 
                              <div className="mt-8 flex gap-4">
-                                <button onClick={() => { setSaveAddr(true); validateAddress() && setStep(1); }} className="bg-blue-600 text-white px-8 py-3.5 rounded-[3px] text-sm font-bold uppercase shadow-sm tracking-wide hover:bg-blue-700">
+                                <button onClick={() => { validateAddress(true) && setStep(1); }} className="bg-blue-600 text-white px-8 py-3.5 rounded-[3px] text-sm font-bold uppercase shadow-sm tracking-wide hover:bg-blue-700">
                                    Save and Deliver Here
                                 </button>
                                 {savedAddresses.length > 0 && (
@@ -344,19 +351,19 @@ export default function CheckoutPage() {
                                                    </div>
                                                 </div>
                                              )}
-                                             {opt.id === "card" && (
-                                                <div className="grid grid-cols-2 gap-4 max-w-sm">
-                                                   <div className="col-span-2">
-                                                      <input type="text" placeholder="Enter Card Number" maxLength={19} className="w-full px-3 py-2 border border-gray-300 rounded text-sm placeholder-gray-400 outline-none focus:border-blue-500" />
-                                                   </div>
-                                                   <div>
-                                                      <input type="text" placeholder="Valid Thru (MM/YY)" maxLength={5} className="w-full px-3 py-2 border border-gray-300 rounded text-sm placeholder-gray-400 outline-none focus:border-blue-500" />
-                                                   </div>
-                                                   <div>
-                                                      <input type="password" placeholder="CVV" maxLength={4} className="w-full px-3 py-2 border border-gray-300 rounded text-sm placeholder-gray-400 outline-none focus:border-blue-500" />
-                                                   </div>
-                                                </div>
-                                             )}
+                                              {opt.id === "card" && (
+                                                 <div className="grid grid-cols-2 gap-4 max-w-sm">
+                                                    <div className="col-span-2">
+                                                       <input type="text" placeholder="Enter Card Number" maxLength={19} value={card.number} onChange={e => setCard({...card, number: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded text-sm placeholder-gray-400 outline-none focus:border-blue-500" />
+                                                    </div>
+                                                    <div>
+                                                       <input type="text" placeholder="Valid Thru (MM/YY)" maxLength={5} value={card.expiry} onChange={e => setCard({...card, expiry: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded text-sm placeholder-gray-400 outline-none focus:border-blue-500" />
+                                                    </div>
+                                                    <div>
+                                                       <input type="password" placeholder="CVV" maxLength={4} value={card.cvv} onChange={e => setCard({...card, cvv: e.target.value})} className="w-full px-3 py-2 border border-gray-300 rounded text-sm placeholder-gray-400 outline-none focus:border-blue-500" />
+                                                    </div>
+                                                 </div>
+                                              )}
                                              <div className="mt-6 flex items-center justify-between">
                                                 <button onClick={handlePlaceOrder} disabled={processing} className="bg-blue-600 text-white px-10 py-3 rounded-[3px] text-sm font-bold tracking-wide uppercase shadow-sm hover:bg-blue-700 transition-colors">
                                                    {processing ? "Processing..." : `PAY ₹${cartTotal.toLocaleString("en-IN")}`}

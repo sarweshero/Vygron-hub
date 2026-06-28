@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { Search, Bell, ShoppingCart, User, LogOut, LayoutDashboard, Package, Heart, Settings } from "lucide-react";
-import { getCachedUserInfo, clearUserToken } from "@/lib/api";
+import { getCachedUserInfo, clearUserToken, mediaUrl } from "@/lib/api";
 
 /* ─── Mock cart data ─── */
 type CartItem = {
@@ -219,7 +219,7 @@ export default function CartPage() {
                      {/* Image */}
                      <div className="w-24 h-24 sm:w-28 sm:h-28 bg-gray-50 rounded overflow-hidden flex-shrink-0 flex items-center justify-center border border-gray-100">
                         {item.images?.[0] ? (
-                           <img src={item.images[0]} alt={item.name} className="w-full h-full object-cover" />
+                           <img src={mediaUrl(item.images[0])} alt={item.name} className="w-full h-full object-cover" />
                         ) : (
                            <span className="text-4xl opacity-25">🥻</span>
                         )}

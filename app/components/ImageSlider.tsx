@@ -4,6 +4,7 @@
 // – Modals: arrows always visible, thumbnail strip at bottom (alwaysShowControls + showThumbs)
 
 import { useState, useEffect } from "react";
+import { mediaUrl } from "@/lib/api";
 
 interface ImageSliderProps {
   images: string[];
@@ -73,7 +74,7 @@ export default function ImageSlider({
             <div key={i} style={{ width: `${100 / count}%`, flexShrink: 0, height: "100%" }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={src}
+                src={mediaUrl(src)}
                 alt={`${alt} ${i + 1}`}
                 style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }}
               />
@@ -174,7 +175,7 @@ export default function ImageSlider({
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={src}
+                src={mediaUrl(src)}
                 alt={`Thumbnail ${i + 1}`}
                 style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }}
               />

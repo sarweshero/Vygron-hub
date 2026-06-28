@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowRight, Mail, Lock, Eye, EyeOff, ShieldCheck, Globe, Search, Bell, Settings as SettingsIcon, Plus, LayoutDashboard, Package, ShoppingBag, MessageSquare, LogOut, ChevronRight, Store, Users, Wallet, TrendingUp, Menu, X, ArrowLeft } from "lucide-react";
 import {
   apiLogin, apiGet, apiPost, apiPatch, apiDelete,
-  productFromAPI, productToAPI, orderFromAPI, clearToken,
+  productFromAPI, productToAPI, orderFromAPI, clearToken, mediaUrl,
 } from "@/lib/api";
 
 /* ═══════════════════════════ TYPES ═══════════════════════════════ */
@@ -979,7 +979,7 @@ export default function AdminPage() {
                       {form.images.map((src,idx)=>(
                         <div key={idx} className="relative group rounded-xl overflow-hidden flex-shrink-0" style={{width:"80px",height:"88px",border:`2px solid ${idx===0?"var(--primary)":"var(--cream-dark)"}`}}>
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={src} alt={`img-${idx+1}`} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                          <img src={mediaUrl(src)} alt={`img-${idx+1}`} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
                           <button
                             type="button"
                             onClick={e=>{e.stopPropagation();removeImage(idx);}}
@@ -1222,7 +1222,7 @@ export default function AdminPage() {
                   <div key={p.id} className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{background:"#fff",border:`1.5px solid ${p.showOnHome?"var(--primary)":"var(--cream-dark)"}`}}>
                     <div className={`${p.imgClass} w-10 h-11 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center`}>
                       {p.images?.[0]
-                        ? <img src={p.images[0]} alt={p.name} style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"top"}}/>
+                        ? <img src={mediaUrl(p.images[0])} alt={p.name} style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"top"}}/>
                         : <span style={{fontSize:"1.1rem",opacity:0.3}}>🥻</span>
                       }
                     </div>
@@ -1266,7 +1266,7 @@ export default function AdminPage() {
                             <div className="flex items-center gap-3">
                               <div className={`${p.imgClass} w-9 h-10 rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center`}>
                                 {p.images?.[0]
-                                  ? <img src={p.images[0]} alt={p.name} style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"top"}}/>
+                                  ? <img src={mediaUrl(p.images[0])} alt={p.name} style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"top"}}/>
                                   : <span style={{fontSize:"1rem",opacity:0.3}}>🥻</span>
                                 }
                               </div>

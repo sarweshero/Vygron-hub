@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useMemo, useRef } from "react";
 import { useParams } from "next/navigation";
-import { getShopDetails, clearUserToken, getCachedUserInfo } from "@/lib/api";
+import { getShopDetails, clearUserToken, getCachedUserInfo, mediaUrl } from "@/lib/api";
 import Link from "next/link";
 import Footer from "@/app/components/Footer";
 import { 
@@ -46,8 +46,10 @@ export default function ShopPage() {
 
   useEffect(() => {
     // Load global cart + user
-    const saved = localStorage.getItem("vygron_cart");
-    if (saved) setCart(JSON.parse(saved));
+    try {
+      const saved = localStorage.getItem("vygron_cart");
+      if (saved) setCart(JSON.parse(saved));
+    } catch {}
     const info = getCachedUserInfo();
     if (info) setUserName(info.name?.split(" ")[0] || "Profile");
   }, []);
@@ -64,13 +66,35 @@ export default function ShopPage() {
       shop_slug: slug,
       shop_name: shop.name
     };
-    
+
     if (existing) {
       setCart(cart.map(item => item.id === product.id ? { ...item, qty: item.qty + 1 } : item));
     } else {
       setCart([...cart, itemToAdd]);
     }
     alert(`Added to your Vygron Hub cart via ${shop.name}! ✨`);
+  };
+
+  const addToWishlist = (product: any) => {
+    try {
+      const stored = localStorage.getItem("kurthi_wishlist");
+      const wishlist: any[] = stored ? JSON.parse(stored) : [];
+      if (wishlist.some((w: any) => w.id === product.id)) {
+        alert("Already in your wishlist!");
+        return;
+      }
+      wishlist.push({
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        original: product.mrp,
+        imgClass: product.img_class || "product-img-1",
+        images: product.images || [],
+        tag: product.tag
+      });
+      localStorage.setItem("kurthi_wishlist", JSON.stringify(wishlist));
+      alert("Added to your wishlist! ❤️");
+    } catch {}
   };
 
   const handleLogout = () => {
@@ -229,7 +253,7 @@ export default function ShopPage() {
                <div className="absolute inset-0 bg-blue-500/10 blur-[100px] rounded-full group-hover:scale-110 transition-transform duration-1000" />
                {shop.logo ? (
                  <div className="relative w-80 h-80 bg-white rounded-[4rem] p-16 shadow-[0_40px_100px_rgba(0,0,0,0.06)] flex items-center justify-center transform rotate-3 hover:rotate-0 transition-all duration-700 border border-white">
-                    <img src={shop.logo} alt={shop.name} className="w-full h-full object-contain" />
+                    <img src={mediaUrl(shop.logo)} alt={shop.name} className="w-full h-full object-contain" />
                  </div>
                ) : (
                  <div className="relative w-80 h-80 bg-white rounded-[4rem] flex items-center justify-center text-9xl font-black text-blue-600 shadow-2xl rotate-3">
@@ -260,7 +284,7 @@ export default function ShopPage() {
                   className="bg-white rounded-[3rem] overflow-hidden shadow-sm hover:shadow-[0_40px_100px_rgba(0,0,0,0.07)] transition-all group flex flex-col cursor-pointer border border-gray-50 border-b-4 border-b-transparent hover:border-b-blue-600"
                >
                   <div className="aspect-[4/5] relative bg-gray-50/50 p-10 flex items-center justify-center">
-                     <img src={product.images?.[0] || "https://images.unsplash.com/photo-1542291026-7eec264c27ff?q=80&w=1000&auto=format&fit=crop"} className="w-full h-full object-contain mix-blend-multiply group-hover:scale-110 transition-transform duration-700" alt={product.name} />
+                     <img src={mediaUrl(product.images?.[0]) || "https://images.unsplash.com/photo-1542291026-7eec264c27ff?q=80&w=1000&auto=format&fit=crop"} className="w-full h-full object-contain mix-blend-multiply group-hover:scale-110 transition-transform duration-700" alt={product.name} />
                      <div className="absolute top-8 left-8 px-4 py-1.5 bg-blue-600 text-white text-[9px] font-black uppercase tracking-widest rounded-full shadow-lg">New Arrival</div>
                      <div className="absolute top-8 right-8 flex flex-col gap-3 opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0">
                         <button className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-2xl hover:text-red-500 transition-colors"><Heart size={20} /></button>
@@ -308,14 +332,14 @@ export default function ShopPage() {
 
                <div className="w-full md:w-1/2 bg-gray-50/50 flex flex-col border-b md:border-b-0 md:border-r border-gray-100">
                   <div className="flex-1 p-16 flex items-center justify-center relative min-h-[400px]">
-                     <img src={activeImage || "https://images.unsplash.com/photo-1542291026-7eec264c27ff?q=80&w=1000&auto=format&fit=crop"} className="w-full h-full max-h-[500px] object-contain mix-blend-multiply" alt={selectedProduct.name} />
+                     <img src={mediaUrl(activeImage) || "https://images.unsplash.com/photo-1542291026-7eec264c27ff?q=80&w=1000&auto=format&fit=crop"} className="w-full h-full max-h-[500px] object-contain mix-blend-multiply" alt={selectedProduct.name} />
                   </div>
                   {selectedProduct.images && selectedProduct.images.length > 1 && (
                     <div className="p-10 bg-white border-t border-gray-50">
                        <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
                           {selectedProduct.images.map((img: string, i: number) => (
                             <button key={i} onClick={() => setActiveImage(img)} className={`w-24 h-24 rounded-2xl flex-shrink-0 overflow-hidden border-2 transition-all p-3 bg-gray-50 ${activeImage === img ? 'border-blue-600 shadow-xl scale-110' : 'border-transparent opacity-60'}`}>
-                               <img src={img} className="w-full h-full object-contain mix-blend-multiply" alt={i.toString()} />
+                               <img src={mediaUrl(img)} className="w-full h-full object-contain mix-blend-multiply" alt={i.toString()} />
                             </button>
                           ))}
                        </div>
@@ -349,9 +373,9 @@ export default function ShopPage() {
                      <button onClick={() => { addToCart(selectedProduct); setSelectedProduct(null); }} className="flex-[3] py-7 bg-blue-600 text-white rounded-[2rem] text-[11px] font-black uppercase tracking-[0.3em] shadow-2xl shadow-blue-600/30 hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-4">
                         <ShoppingBag size={20} /> Add to Bag
                      </button>
-                     <button onClick={() => { addToCart(selectedProduct); setSelectedProduct(null); }} className="flex-[2] py-7 border-2 border-gray-100 text-[#1A1A1A] rounded-[2rem] text-[11px] font-black uppercase tracking-[0.3em] hover:bg-gray-50 transition-all">
-                        Wishlist
-                     </button>
+                      <button onClick={() => { addToWishlist(selectedProduct); setSelectedProduct(null); }} className="flex-[2] py-7 border-2 border-gray-100 text-[#1A1A1A] rounded-[2rem] text-[11px] font-black uppercase tracking-[0.3em] hover:bg-gray-50 transition-all">
+                         Wishlist
+                      </button>
                   </div>
                   
                   <div className="pt-10 flex items-center gap-6 opacity-40">

@@ -45,11 +45,18 @@ export default function Footer() {
           <div>
             <h4 className="font-semibold mb-5 text-sm tracking-widest uppercase" style={{ fontFamily: "var(--font-jost, sans-serif)", color: "var(--accent-light)" }}>Help</h4>
             <ul className="space-y-3 list-none p-0 m-0">
-              {["Size Guide", "Track Order", "Returns & Exchange", "Shipping Info", "Contact Us", "FAQ"].map((item) => (
-                <li key={item}>
-                  <a href="#" className="text-sm opacity-70 hover:opacity-100 transition-opacity" style={{ color: "#fff", textDecoration: "none", fontFamily: "var(--font-jost, sans-serif)" }}>
-                    {item}
-                  </a>
+              {[
+                { label: "Size Guide", href: "#" },
+                { label: "Track Order", href: "/dashboard/customer?tab=orders" },
+                { label: "Returns & Exchange", href: "#" },
+                { label: "Shipping Info", href: "#" },
+                { label: "Contact Us", href: "#" },
+                { label: "FAQ", href: "#" },
+              ].map((item) => (
+                <li key={item.label}>
+                  <Link href={item.href} className="text-sm opacity-70 hover:opacity-100 transition-opacity" style={{ color: "#fff", textDecoration: "none", fontFamily: "var(--font-jost, sans-serif)" }}>
+                    {item.label}
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -78,7 +85,7 @@ export default function Footer() {
           className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-8 text-xs opacity-60"
           style={{ borderTop: "1px solid rgba(255,255,255,0.15)", fontFamily: "var(--font-jost, sans-serif)" }}
         >
-          <p>© 2026 Vygron Hub. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} Vygron Hub. All rights reserved.</p>
           <div className="flex gap-6">
             {["Privacy Policy", "Terms of Service", "Sitemap"].map((l) => (
               <a key={l} href="#" className="hover:opacity-100 transition-opacity" style={{ color: "#fff", textDecoration: "none" }}>{l}</a>

@@ -2,7 +2,7 @@
 // page.tsx – Vygron Hub | Inspired by the TrendHub UI
 
 import { useState, useEffect, useMemo } from "react";
-import { getAllShops, BASE } from "@/lib/api";
+import { getAllShops, BASE, mediaUrl } from "@/lib/api";
 import Link from "next/link";
 import Footer from "@/app/components/Footer";
 import { 
@@ -42,9 +42,11 @@ export default function Home() {
 
   useEffect(() => {
     // Load global cart
-    const saved = localStorage.getItem("vygron_cart");
-    if (saved) setCart(JSON.parse(saved));
-    
+    try {
+      const saved = localStorage.getItem("vygron_cart");
+      if (saved) setCart(JSON.parse(saved));
+    } catch {}
+
     // Check for user
     const info = getCachedUserInfo();
     if (info) setUserName(info.name?.split(" ")[0] || "Profile");
@@ -230,14 +232,14 @@ export default function Home() {
                <div className="bg-[#FFEB3B] p-6 rounded-[2rem] w-44 space-y-4 shadow-xl shadow-yellow-500/10">
                   <h3 className="font-black text-sm text-[#1A1A1A]">Back to School</h3>
                   <p className="text-[10px] text-gray-600 leading-tight">Grab your school supplies at unbeatable prices!</p>
-                  <button className="w-full py-2 bg-blue-600 text-white text-[9px] font-black uppercase tracking-wider rounded-lg">Claim discount</button>
-               </div>
-               
-               {/* Mini Promo Card 2 */}
-               <div className="bg-white p-6 rounded-[2rem] w-44 space-y-4 shadow-xl">
-                  <span className="inline-block px-2 py-1 bg-yellow-400 text-[10px] font-black rounded-md">20% OFF</span>
-                  <h3 className="font-black text-xs text-[#1A1A1A]">For All Cosmetic Product</h3>
-                  <button className="w-full py-2 bg-blue-600 text-white text-[9px] font-black uppercase tracking-wider rounded-lg">Claim discount</button>
+                   <button onClick={() => document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' })} className="w-full py-2 bg-blue-600 text-white text-[9px] font-black uppercase tracking-wider rounded-lg">Claim discount</button>
+                </div>
+
+                {/* Mini Promo Card 2 */}
+                <div className="bg-white p-6 rounded-[2rem] w-44 space-y-4 shadow-xl">
+                   <span className="inline-block px-2 py-1 bg-yellow-400 text-[10px] font-black rounded-md">20% OFF</span>
+                   <h3 className="font-black text-xs text-[#1A1A1A]">For All Cosmetic Product</h3>
+                   <button onClick={() => document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' })} className="w-full py-2 bg-blue-600 text-white text-[9px] font-black uppercase tracking-wider rounded-lg">Claim discount</button>
                </div>
             </div>
          </div>
@@ -274,7 +276,7 @@ export default function Home() {
                            <button className="bg-blue-600 text-white px-8 py-3 rounded-xl text-xs font-bold shadow-2xl shadow-blue-600/30">Visit Boutique →</button>
                         </div>
                         {shops[0].logo ? (
-                           <img src={shops[0].logo} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full object-cover opacity-60 group-hover:scale-110 transition-transform duration-1000" alt={shops[0].name} />
+                           <img src={mediaUrl(shops[0].logo)} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full object-cover opacity-60 group-hover:scale-110 transition-transform duration-1000" alt={shops[0].name} />
                         ) : (
                            <div className="absolute inset-0 bg-gradient-to-br from-blue-900 to-black opacity-60" />
                         )}
@@ -293,7 +295,7 @@ export default function Home() {
                            </div>
                            <div className="w-1/3 aspect-square relative z-10 flex items-center justify-center">
                               {shops[1].logo ? (
-                                 <img src={shops[1].logo} className="w-32 h-32 object-contain group-hover:scale-110 transition-transform duration-700" alt={shops[1].name} />
+                                 <img src={mediaUrl(shops[1].logo)} className="w-32 h-32 object-contain group-hover:scale-110 transition-transform duration-700" alt={shops[1].name} />
                               ) : (
                                  <div className="w-24 h-24 bg-gray-50 rounded-full flex items-center justify-center text-3xl font-black text-gray-200">{shops[1].name[0]}</div>
                               )}
@@ -309,7 +311,7 @@ export default function Home() {
                            </div>
                            <div className="w-1/3 relative z-10 flex items-center justify-center">
                               {shops[2].logo ? (
-                                 <img src={shops[2].logo} className="w-32 h-full object-cover group-hover:rotate-6 transition-transform duration-700" alt={shops[2].name} />
+                                 <img src={mediaUrl(shops[2].logo)} className="w-32 h-full object-cover group-hover:rotate-6 transition-transform duration-700" alt={shops[2].name} />
                               ) : (
                                  <div className="w-24 h-24 bg-white/50 rounded-full flex items-center justify-center text-3xl font-black text-white">{shops[2].name[0]}</div>
                               )}
@@ -329,7 +331,7 @@ export default function Home() {
                            <button className="bg-white text-blue-600 px-8 py-3 rounded-xl text-xs font-bold shadow-2xl">Visit Hub →</button>
                         </div>
                         {shops[3].logo ? (
-                           <img src={shops[3].logo} className="absolute bottom-[-10%] right-[-10%] w-[120%] h-[120%] object-contain opacity-20 group-hover:scale-110 transition-transform duration-1000" alt={shops[3].name} />
+                           <img src={mediaUrl(shops[3].logo)} className="absolute bottom-[-10%] right-[-10%] w-[120%] h-[120%] object-contain opacity-20 group-hover:scale-110 transition-transform duration-1000" alt={shops[3].name} />
                         ) : (
                            <div className="absolute inset-0 bg-white/5" />
                         )}
@@ -345,7 +347,7 @@ export default function Home() {
       </section>
 
       {/* ── PRODUCT OF THE MONTH 85% ── */}
-      <section className="w-[85%] mx-auto py-24 space-y-16">
+      <section id="products" className="w-[85%] mx-auto py-24 space-y-16">
          <div className="flex items-center justify-between">
             <h2 className="text-4xl font-black text-[#1A1A1A]">Product of The Month</h2>
             <Link href="#" className="flex items-center gap-2 text-sm font-bold text-gray-400 hover:text-blue-600 transition-all">
@@ -361,21 +363,21 @@ export default function Home() {
                   className="bg-white rounded-[2.5rem] overflow-hidden shadow-sm hover:shadow-[0_40px_80px_rgba(0,0,0,0.08)] transition-all group flex flex-col cursor-pointer border border-gray-50"
                >
                   <div className="aspect-square relative bg-gray-50 p-6 flex items-center justify-center">
-                     <img src={product.images?.[0]} className="w-full h-full object-contain mix-blend-multiply group-hover:scale-110 transition-transform duration-700" alt={product.name} />
+                     <img src={mediaUrl(product.images?.[0])} className="w-full h-full object-contain mix-blend-multiply group-hover:scale-110 transition-transform duration-700" alt={product.name} />
                      <div className="absolute top-6 left-6 px-3 py-1 bg-[#FFEB3B] text-[9px] font-black uppercase tracking-widest rounded-md shadow-sm">Popular</div>
-                     <div className="absolute top-6 right-6 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0">
-                        <button className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-lg hover:text-red-500 transition-colors"><Heart size={18} /></button>
-                        <button className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-lg hover:text-blue-600 transition-colors"><ShoppingCart size={18} /></button>
-                     </div>
+                      <div className="absolute top-6 right-6 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0">
+                         <button onClick={(e) => { e.stopPropagation(); try { const w = JSON.parse(localStorage.getItem("kurthi_wishlist") || "[]"); if (!w.some((x:any) => x.id === product.id)) { w.push({ id: product.id, name: product.name, price: product.price, original: product.mrp, imgClass: product.img_class, images: product.images, tag: product.tag }); localStorage.setItem("kurthi_wishlist", JSON.stringify(w)); alert("Added to wishlist! ❤️"); } else { alert("Already in wishlist!"); } } catch {} }} className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-lg hover:text-red-500 transition-colors"><Heart size={18} /></button>
+                         <button onClick={(e) => { e.stopPropagation(); addToCart(product); }} className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-lg hover:text-blue-600 transition-colors"><ShoppingCart size={18} /></button>
+                      </div>
                   </div>
                   <div className="p-8 space-y-4">
                      <div className="space-y-1">
                         <h4 className="text-xl font-black text-[#1A1A1A] line-clamp-1 leading-tight">{product.name}</h4>
                         <p className="text-sm font-black text-blue-600">₹{parseFloat(product.price).toLocaleString()}</p>
                      </div>
-                     <button className="w-full py-4 bg-blue-600 text-white rounded-2xl text-xs font-black shadow-lg shadow-blue-600/20 active:scale-95 transition-all">
-                        Buy now
-                     </button>
+                      <button onClick={(e) => { e.stopPropagation(); addToCart(product); }} className="w-full py-4 bg-blue-600 text-white rounded-2xl text-xs font-black shadow-lg shadow-blue-600/20 active:scale-95 transition-all">
+                         Buy now
+                      </button>
                   </div>
                </div>
             ))}
@@ -396,11 +398,11 @@ export default function Home() {
                {/* Image Gallery */}
                <div className="w-full md:w-1/2 bg-gray-50 flex flex-col border-b md:border-b-0 md:border-r border-gray-100">
                   <div className="flex-1 p-12 flex items-center justify-center relative group min-h-[400px]">
-                     <img 
-                        src={activeImage || "https://images.unsplash.com/photo-1542291026-7eec264c27ff?q=80&w=1000&auto=format&fit=crop"} 
-                        alt={selectedProduct.name}
-                        className="w-full h-full max-h-[500px] object-contain mix-blend-multiply transition-all duration-700"
-                     />
+                     <img
+                         src={mediaUrl(activeImage) || "https://images.unsplash.com/photo-1542291026-7eec264c27ff?q=80&w=1000&auto=format&fit=crop"}
+                         alt={selectedProduct.name}
+                         className="w-full h-full max-h-[500px] object-contain mix-blend-multiply transition-all duration-700"
+                      />
                   </div>
                   {selectedProduct.images && selectedProduct.images.length > 1 && (
                     <div className="p-8 border-t border-gray-200/50 bg-white">
@@ -411,7 +413,7 @@ export default function Home() {
                              onClick={() => setActiveImage(img)}
                              className={`w-20 h-20 rounded-2xl flex-shrink-0 overflow-hidden border-2 transition-all p-2 bg-gray-50 ${activeImage === img ? 'border-blue-600 shadow-md scale-105' : 'border-transparent'}`}
                            >
-                             <img src={img} className="w-full h-full object-contain mix-blend-multiply" alt={`Thumbnail ${i}`} />
+                             <img src={mediaUrl(img)} className="w-full h-full object-contain mix-blend-multiply" alt={`Thumbnail ${i}`} />
                            </button>
                          ))}
                       </div>

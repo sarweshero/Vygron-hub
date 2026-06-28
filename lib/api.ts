@@ -1,9 +1,15 @@
 /* ──────────────────────────────────────────────────────────────────
    Vygron Hub – API utility
-   Base URL: http://127.0.0.1:8000/api
    ────────────────────────────────────────────────────────────────── */
 
-export const BASE = "http://127.0.0.1:8000/api";
+export const BASE = `${process.env.NEXT_PUBLIC_API_HOST}/api`;
+export const HOST = process.env.NEXT_PUBLIC_API_HOST ?? "";
+
+export function mediaUrl(url: string | null | undefined): string {
+  if (!url) return "";
+  return url.replace(/^https?:\/\/127\.0\.0\.1:8000/, HOST)
+            .replace(/^https?:\/\/localhost:8000/, HOST);
+}
 
 export function getToken(): string | null {
   try { return localStorage.getItem("vygron_admin_token"); } catch { return null; }
@@ -239,8 +245,8 @@ export const updateShopSettings = (payload: any) =>
 export const uploadImage = async (file: File) => {
   const formData = new FormData();
   formData.append("image", file);
-  
-  const token = localStorage.getItem("vygron_user_token");
+
+  const token = getUserToken();
   const res = await fetch(`${BASE}/upload/`, {
     method: "POST",
     headers: {
@@ -248,7 +254,7 @@ export const uploadImage = async (file: File) => {
     },
     body: formData
   });
-  
+
   if (!res.ok) throw new Error("Upload failed");
   return await res.json() as { url: string };
 };

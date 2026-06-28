@@ -121,12 +121,13 @@ class ShopSerializer(serializers.ModelSerializer):
     class Meta:
         model = Shop
         fields = [
-            "id", "name", "slug", "description", "tagline", "logo", "banner", 
+            "id", "name", "slug", "description", "tagline", "logo", "banner",
             "hero_heading", "categories_heading",
-            "business_details", "custom_categories", "bg_color", 
-            "footer_address", "footer_phone", "footer_email", 
+            "business_details", "custom_categories", "bg_color",
+            "footer_address", "footer_phone", "footer_email",
             "is_approved", "products"
         ]
+        read_only_fields = ["is_approved"]
 
 
 class ShopRegisterSerializer(serializers.Serializer):

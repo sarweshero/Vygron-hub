@@ -8,15 +8,17 @@ import {
   Package, ShoppingBag, MessageSquare, LogOut, ChevronRight, 
   Star, BarChart3, TrendingUp, Users, Wallet, CheckCircle2, Globe, Image as ImageIcon
 } from "lucide-react";
-import { 
-  getShopDashboardStats, 
-  getShopProducts, 
-  createShopProduct, 
-  updateShopProduct, 
-  deleteShopProduct, 
+import {
+  getShopDashboardStats,
+  getShopProducts,
+  createShopProduct,
+  updateShopProduct,
+  deleteShopProduct,
   getUserProfile,
   changePassword,
-  clearUserToken
+  clearUserToken,
+  mediaUrl,
+  uploadImage
 } from "@/lib/api";
 
 type Tab = "dashboard" | "menu" | "orders" | "setting";
@@ -30,9 +32,11 @@ export default function ShopDashboard() {
   const [profile, setProfile] = useState<any>(null);
 
   const [showAddForm, setShowAddForm] = useState(false);
-  const [newProd, setNewProd] = useState<any>({ 
-    name: "", price: "", mrp: "", stock: "", category: "Others", description: "", fabric: "", sizes: [], is_featured: false,
-    images: [], specifications: {}
+  const [newProd, setNewProd] = useState<any>({
+    name: "", price: "", mrp: "", stock: "", category: "Others", description: "", fabric: "",
+    sizes: [] as string[], is_featured: false, is_new: false, is_bestseller: false,
+    images: [] as string[], specifications: {}, tag: "", delivery_days: 5, color_hex: "#7b1e3a",
+    img_class: "product-img-1"
   });
   const [submitLoading, setSubmitLoading] = useState(false);
   const [passwords, setPasswords] = useState({ old: "", new: "" });
@@ -115,14 +119,26 @@ export default function ShopDashboard() {
     setSubmitLoading(true);
     try {
       await createShopProduct({
-        ...newProd,
+        name: newProd.name,
+        price: parseInt(newProd.price, 10) || 0,
+        mrp: parseInt(newProd.mrp, 10) || 0,
+        stock: parseInt(newProd.stock, 10) || 0,
+        category: newProd.category,
+        description: newProd.description,
+        fabric: newProd.fabric,
         sizes: newProd.sizes || [],
         is_featured: newProd.is_featured || false,
+        is_new: newProd.is_new || false,
+        is_bestseller: newProd.is_bestseller || false,
         images: (newProd.images || []).filter((url: string) => url.trim() !== ""),
-        specifications: newProd.specifications || {}
+        specifications: newProd.specifications || {},
+        tag: newProd.tag || "",
+        delivery_days: newProd.delivery_days || 5,
+        color_hex: newProd.color_hex || "#7b1e3a",
+        img_class: newProd.img_class || "product-img-1"
       });
       setShowAddForm(false);
-      setNewProd({ name: "", price: "", mrp: "", stock: "", category: "Others", description: "", fabric: "", sizes: [], is_featured: false, images: [], specifications: {} });
+      setNewProd({ name: "", price: "", mrp: "", stock: "", category: "Others", description: "", fabric: "", sizes: [], is_featured: false, is_new: false, is_bestseller: false, images: [], specifications: {}, tag: "", delivery_days: 5, color_hex: "#7b1e3a", img_class: "product-img-1" });
       loadData();
     } catch (err) {
       alert("Failed to add product");
@@ -200,7 +216,7 @@ export default function ShopDashboard() {
                     <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Verified Seller</p>
                  </div>
                  <div className="w-10 h-10 bg-gray-100 rounded-xl overflow-hidden shadow-inner flex items-center justify-center font-black text-blue-600">
-                    {profile?.logo ? <img src={profile.logo} className="w-full h-full object-cover" /> : profile?.name?.[0]}
+                    {profile?.logo ? <img src={mediaUrl(profile.logo)} className="w-full h-full object-cover" /> : profile?.name?.[0]}
                  </div>
               </div>
            </div>
@@ -382,36 +398,151 @@ export default function ShopDashboard() {
       {/* ── ADD PRODUCT MODAL ── */}
       {showAddForm && (
          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/40 backdrop-blur-md animate-in fade-in duration-300">
-            <div className="bg-white w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-[3.5rem] shadow-2xl animate-in zoom-in-95 duration-500 custom-scrollbar">
-               <div className="p-12 md:p-16 space-y-12">
+            <div className="bg-white w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-[3.5rem] shadow-2xl animate-in zoom-in-95 duration-500 custom-scrollbar">
+               <div className="p-12 md:p-16 space-y-10">
                   <div className="flex items-center justify-between">
                      <h2 className="text-4xl font-black text-[#1A1A1A]">Curate Product</h2>
                      <button onClick={() => setShowAddForm(false)} className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center text-gray-400 hover:text-red-500 transition-all">✕</button>
                   </div>
-                  <div className="grid md:grid-cols-2 gap-10">
+
+                  {/* Row 1: Name + Category */}
+                  <div className="grid md:grid-cols-2 gap-8">
                      <FormGroup label="Product Name" value={newProd.name} onChange={(v: string) => setNewProd({...newProd, name:v})} />
                      <div className="space-y-2">
                         <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Market Category</label>
-                        <select 
-                           value={newProd.category} 
+                        <select
+                           value={newProd.category}
                            onChange={e => setNewProd({...newProd, category: e.target.value})}
                            className="w-full bg-gray-50 border border-gray-100 rounded-[1.5rem] py-5 px-8 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-600/20"
                         >
                            {shopSettings.custom_categories.map(c => <option key={c} value={c}>{c}</option>)}
+                           <option value="Womens Wear">Womens Wear</option>
+                           <option value="Mens Wear">Mens Wear</option>
+                           <option value="Electronics">Electronics</option>
+                           <option value="Home & Living">Home & Living</option>
                            <option value="Others">Others</option>
                         </select>
                      </div>
-                     <div className="grid grid-cols-2 gap-6 md:col-span-2">
-                        <FormGroup label="Selling Price (₹)" value={newProd.price} onChange={(v: string) => setNewProd({...newProd, price:v})} type="number" />
-                        <FormGroup label="MRP Label (₹)" value={newProd.mrp} onChange={(v: string) => setNewProd({...newProd, mrp:v})} type="number" />
+                  </div>
+
+                  {/* Row 2: Price, MRP, Stock, Delivery Days */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                     <FormGroup label="Selling Price (₹)" value={newProd.price} onChange={(v: string) => setNewProd({...newProd, price:v})} type="number" />
+                     <FormGroup label="MRP (₹)" value={newProd.mrp} onChange={(v: string) => setNewProd({...newProd, mrp:v})} type="number" />
+                     <FormGroup label="Stock" value={newProd.stock} onChange={(v: string) => setNewProd({...newProd, stock:v})} type="number" />
+                     <FormGroup label="Delivery Days" value={String(newProd.delivery_days)} onChange={(v: string) => setNewProd({...newProd, delivery_days: parseInt(v,10) || 5})} type="number" />
+                  </div>
+
+                  {/* Row 3: Fabric + Tag */}
+                  <div className="grid md:grid-cols-2 gap-8">
+                     <FormGroup label="Fabric / Material" value={newProd.fabric} onChange={(v: string) => setNewProd({...newProd, fabric:v})} placeholder="e.g. Cotton, Silk, Polyester" />
+                     <div className="space-y-2">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Product Tag</label>
+                        <div className="flex gap-3">
+                           {["", "New", "Hot", "Sale", "Luxe"].map(t => (
+                              <button key={t} type="button" onClick={() => setNewProd({...newProd, tag: t})}
+                                 className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${
+                                    newProd.tag === t ? "bg-blue-600 text-white border-blue-600" : "bg-gray-50 text-gray-400 border-gray-100 hover:border-blue-300"
+                                 }`}>
+                                 {t || "None"}
+                              </button>
+                           ))}
+                        </div>
                      </div>
                   </div>
-                  <div className="pt-10 flex gap-6">
-                     <button onClick={() => setShowAddForm(false)} className="flex-1 py-6 bg-gray-50 text-gray-400 rounded-3xl text-[10px] font-black uppercase tracking-widest">Cancel</button>
-                     <button 
+
+                  {/* Row 4: Sizes */}
+                  <div className="space-y-3">
+                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Available Sizes</label>
+                     <div className="flex flex-wrap gap-3">
+                        {["XS","S","M","L","XL","XXL","3XL","FREE"].map(s => {
+                           const active = newProd.sizes.includes(s);
+                           return (
+                              <button key={s} type="button" onClick={() => {
+                                 setNewProd({...newProd, sizes: active ? newProd.sizes.filter((x:string) => x !== s) : [...newProd.sizes, s]});
+                              }}
+                                 className={`px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${
+                                    active ? "bg-blue-600 text-white border-blue-600" : "bg-gray-50 text-gray-400 border-gray-100 hover:border-blue-300"
+                                 }`}>
+                                 {s}
+                              </button>
+                           );
+                        })}
+                     </div>
+                  </div>
+
+                  {/* Row 5: Description */}
+                  <div className="space-y-2">
+                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Product Description</label>
+                     <textarea rows={4} value={newProd.description} onChange={e => setNewProd({...newProd, description: e.target.value})}
+                        placeholder="Detailed description of your product..."
+                        className="w-full bg-gray-50 border border-gray-100 rounded-[2rem] py-5 px-8 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-600/20 resize-none" />
+                  </div>
+
+                  {/* Row 6: Images */}
+                  <div className="space-y-4">
+                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Product Images</label>
+                     <div className="flex flex-wrap gap-4">
+                        {newProd.images.map((url: string, i: number) => (
+                           <div key={i} className="relative w-28 h-28 rounded-2xl overflow-hidden border border-gray-100 group">
+                              <img src={mediaUrl(url)} className="w-full h-full object-cover" />
+                              <button onClick={() => setNewProd({...newProd, images: newProd.images.filter((_:string,j:number) => j !== i)})}
+                                 className="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+                           </div>
+                        ))}
+                        <label className="w-28 h-28 rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-all">
+                           <ImageIcon size={20} className="text-gray-300 mb-1" />
+                           <span className="text-[9px] font-bold text-gray-400 uppercase">Upload</span>
+                           <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              try {
+                                 const { url } = await uploadImage(file);
+                                 setNewProd({...newProd, images: [...newProd.images, url]});
+                              } catch { alert("Image upload failed."); }
+                           }} />
+                        </label>
+                     </div>
+                     <FormGroup label="Or paste image URL" value={newProd.images[newProd.images.length - 1] || ""} onChange={(v: string) => {
+                        const imgs = [...newProd.images];
+                        if (imgs.length > 0) imgs[imgs.length - 1] = v;
+                        else imgs.push(v);
+                        setNewProd({...newProd, images: imgs});
+                     }} placeholder="https://example.com/image.jpg" />
+                  </div>
+
+                  {/* Row 7: Color + Toggles */}
+                  <div className="grid md:grid-cols-3 gap-8 items-end">
+                     <div className="space-y-2">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Color Accent</label>
+                        <div className="flex items-center gap-4">
+                           <input type="color" value={newProd.color_hex} onChange={e => setNewProd({...newProd, color_hex: e.target.value})}
+                              className="w-14 h-14 rounded-xl border border-gray-100 cursor-pointer" />
+                           <span className="text-xs font-bold text-gray-500">{newProd.color_hex}</span>
+                        </div>
+                     </div>
+                     <div className="flex flex-wrap gap-4">
+                        {[
+                           { key: "is_featured", label: "Featured" },
+                           { key: "is_new", label: "New Arrival" },
+                           { key: "is_bestseller", label: "Bestseller" },
+                        ].map(({ key, label }) => (
+                           <label key={key} className="flex items-center gap-2 cursor-pointer">
+                              <input type="checkbox" checked={newProd[key]} onChange={e => setNewProd({...newProd, [key]: e.target.checked})}
+                                 className="w-4 h-4 accent-blue-600 rounded" />
+                              <span className="text-xs font-bold text-gray-600">{label}</span>
+                           </label>
+                        ))}
+                     </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="pt-6 flex gap-6 border-t border-gray-50">
+                     <button onClick={() => setShowAddForm(false)} className="flex-1 py-6 bg-gray-50 text-gray-400 rounded-3xl text-[10px] font-black uppercase tracking-widest hover:bg-gray-100 transition-all">Cancel</button>
+                     <button
                         onClick={handleAddProduct}
                         disabled={submitLoading}
-                        className="flex-[2] py-6 bg-blue-600 text-white rounded-3xl text-[10px] font-black uppercase tracking-[0.4em] shadow-2xl shadow-blue-600/20 transition-all"
+                        className="flex-[2] py-6 bg-blue-600 text-white rounded-3xl text-[10px] font-black uppercase tracking-[0.4em] shadow-2xl shadow-blue-600/20 hover:-translate-y-1 transition-all disabled:opacity-50"
                      >
                         {submitLoading ? "Curating..." : "Add to Catalog"}
                      </button>
@@ -504,7 +635,7 @@ function ProductGridCard({ product, showActions, onDelete }: any) {
   return (
     <div className="bg-white rounded-[3rem] p-6 shadow-sm border border-gray-50 group transition-all">
        <div className="aspect-square rounded-[2.5rem] bg-gray-50 overflow-hidden mb-6 relative">
-          <img src={product.images?.[0]} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" />
+          <img src={mediaUrl(product.images?.[0])} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" />
           {showActions && (
              <div className="absolute inset-0 bg-black/60 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center gap-4">
                 <button onClick={async () => { if(confirm("Erase?")) { await deleteShopProduct(product.id); onDelete(); }}} className="w-12 h-12 bg-red-500 text-white rounded-2xl flex items-center justify-center">🗑️</button>

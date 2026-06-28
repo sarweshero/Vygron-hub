@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import Navbar from "@/app/components/Navbar";
 import {
   getUserProfile, updateUserProfile, getMyOrders,
-  orderFromAPI,   getCachedUserInfo,  clearUserToken,
+  orderFromAPI,   getCachedUserInfo,  clearUserToken, mediaUrl
 } from "@/lib/api";
 
 /* ─── Types ─── */
@@ -622,7 +622,7 @@ export default function ProfilePage() {
                         {/* Product image */}
                         <div className="w-20 h-24 rounded-xl flex-shrink-0 overflow-hidden relative" style={{ background: "var(--cream)" }}>
                           {item.images?.[0] ? (
-                            <img src={item.images[0]} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                            <img src={mediaUrl(item.images[0])} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                           ) : (
                             <div className={`${item.imgClass} w-full h-full flex items-center justify-center`}>
                               <span style={{ fontSize: "2rem", opacity: 0.25 }}>🥻</span>

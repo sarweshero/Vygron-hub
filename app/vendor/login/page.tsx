@@ -15,6 +15,7 @@ export default function VendorLoginPage() {
 
   const handleLogin = async () => {
     if (!email || !password) { setError("Please enter your credentials."); return; }
+    if (!/\S+@\S+\.\S+/.test(email)) { setError("Please enter a valid email address."); return; }
     setError("");
     setLoading(true);
     try {
