@@ -177,5 +177,6 @@ CORS_ALLOWED_ORIGINS = [
     'http://localhost:3000',
     'http://127.0.0.1:3000',
     'https://vygron-hub.vercel.app',
+    'https://d27f-13-60-157-226.ngrok-free.app',
 ]
 CORS_ALLOW_CREDENTIALS = True
